@@ -1,0 +1,24 @@
+# build outputs and caches (also ignored by tools/arch/check_hexagonal.py)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.import_linter_cache/
+*.egg-info/
+node_modules/
+target/
+bin/
+obj/
+TestResults/
+.venv/
+venv/
+
+# OS and IDE
+.DS_Store
+.idea/
+.vscode/
+
+# author-local, never committed
+.claude/settings.local.json
+CLAUDE.local.md
