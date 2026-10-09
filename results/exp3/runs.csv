@@ -1,0 +1,3 @@
+timestamp_utc,stack,variant,fault_rate,run,rate,logical_requests,attempts,timeouts,gave_up,dropped_iterations,bookings_total,duplicate_bookings,duplicate_charges,lost,p50_ms,p95_ms,p99_ms,git_sha
+2026-10-09T23:34:55+00:00,python,naive,0.05,1,100,10000,10537,538,1,0,10497,497,497,0,3,6,0,478ec4e5f8290743408f90d248e3eec15bbd94a6
+2026-10-09T23:36:51+00:00,python,v2,0.05,1,100,10000,10543,544,1,0,10000,0,0,0,3,5,0,478ec4e5f8290743408f90d248e3eec15bbd94a6
