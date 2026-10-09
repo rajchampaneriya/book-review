@@ -30,6 +30,18 @@ def metric(summary: dict, name: str, field: str) -> int | float:
     return summary["metrics"].get(name, {}).get("values", {}).get(field, 0)
 
 
+def kubectl(*args: str) -> None:
+    subprocess.run(["kubectl", "-n", "wcf-physics", *args], check=True, cwd=REPO)
+
+
+def set_fault_injection(stack: str, enabled: bool) -> None:
+    """The deployment runs with the fault hook off by default (contract test 8);
+    a measured run enables it, then restores the default."""
+    key = f"FAULT_INJECTION={'enabled' if enabled else '-'}"
+    kubectl("set", "env", f"deploy/{stack}", key)
+    kubectl("rollout", "status", f"deploy/{stack}", "--timeout=180s")
+
+
 def main() -> int:
     stack = os.environ.get("STACK", "python")
     variant = os.environ.get("VARIANT", "")
@@ -44,6 +56,10 @@ def main() -> int:
 
     print(f"exp3: truncating schema '{stack}'")
     db.truncate(stack)
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"exp3: enabling fault injection on deploy/{stack}")
+    set_fault_injection(stack, enabled=True)
 
     print(f"exp3: running k6 ({variant}, fault {fault}, run {run})")
     env = {
@@ -54,8 +70,13 @@ def main() -> int:
         "FAULT_RATE": fault,
         "RUN_ID": run_id,
         "RUN": run,
+        "SUMMARY_PATH": str(raw_path),
     }
-    subprocess.run(["k6", "run", "harness/k6/exp3.js"], check=True, cwd=REPO, env=env)
+    try:
+        subprocess.run(["k6", "run", "harness/k6/exp3.js"], check=True, cwd=REPO, env=env)
+    finally:
+        print(f"exp3: restoring default (fault injection off) on deploy/{stack}")
+        set_fault_injection(stack, enabled=False)
 
     summary = json.loads(raw_path.read_text(encoding="utf-8"))
     counts = db.counts(stack)

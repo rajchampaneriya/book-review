@@ -82,6 +82,6 @@ export default function () {
 
 export function handleSummary(data) {
   return {
-    [`results/exp3/raw/${STACK}_${VARIANT}_f${FAULT_RATE}_r${RUN}.json`]: JSON.stringify(data),
+    [__ENV.SUMMARY_PATH]: JSON.stringify(data),
   };
 }
