@@ -1,0 +1,32 @@
+ENGINE ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
+STACK ?= python
+VARIANT ?= naive
+FAULT ?= 0.05
+RUN ?= 1
+
+.PHONY: doctor up down deploy unit arch contract exp3
+
+doctor:
+	bash infra/scripts/doctor.sh
+
+up:
+	bash infra/scripts/up.sh
+
+down:
+	bash infra/scripts/down.sh
+
+deploy:
+	bash infra/scripts/deploy.sh $(STACK)
+
+unit:
+	cd stacks/$(STACK) && $(ENGINE) build --target unit .
+
+arch:
+	python3 tools/arch/check_hexagonal.py $(STACK)
+	cd stacks/$(STACK) && $(ENGINE) build --target arch .
+
+contract:
+	STACK=$(STACK) .venv/bin/python -m pytest -c contracts/pytest.ini contracts/tests
+
+exp3:
+	STACK=$(STACK) VARIANT=$(VARIANT) FAULT=$(FAULT) RUN=$(RUN) .venv/bin/python -m harness.exp3_run

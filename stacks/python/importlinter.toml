@@ -1,0 +1,34 @@
+# Hexagonal architecture contracts for the Python stack.
+# Copy verbatim to stacks/python/importlinter.toml; tools/arch/check_hexagonal.py fails if the copy differs.
+# Run from stacks/python/src:  lint-imports --config ../importlinter.toml
+
+[tool.importlinter]
+root_package = "booking"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Dependencies point inward: bootstrap > adapters > application > domain"
+type = "layers"
+layers = ["booking.bootstrap", "booking.adapters", "booking.application", "booking.domain"]
+
+[[tool.importlinter.contracts]]
+name = "Ports do not depend on services"
+type = "layers"
+layers = ["booking.application.services", "booking.application.ports"]
+
+[[tool.importlinter.contracts]]
+name = "Adapters do not depend on each other"
+type = "independence"
+modules = ["booking.adapters.inbound.*", "booking.adapters.outbound.*"]
+
+[[tool.importlinter.contracts]]
+name = "Adapters call driving ports, never service implementations"
+type = "forbidden"
+source_modules = ["booking.adapters"]
+forbidden_modules = ["booking.application.services"]
+
+[[tool.importlinter.contracts]]
+name = "Domain and application use no frameworks or drivers"
+type = "forbidden"
+source_modules = ["booking.domain", "booking.application"]
+forbidden_modules = ["fastapi", "starlette", "pydantic", "uvicorn", "psycopg", "psycopg_pool", "asyncpg", "sqlalchemy", "httpx", "mcp"]
