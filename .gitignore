@@ -22,8 +22,3 @@ venv/
 # author-local, never committed
 .claude/settings.local.json
 CLAUDE.local.md
-
-# author's local prompt drafts, not part of the committed prompt series
-prompts/01-friday-python-and-harness-v1.md
-prompts/01-friday-python-and-harnessv2.md
-prompts/HexagonalArchitectureTest.java
