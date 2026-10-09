@@ -1,0 +1,73 @@
+# Postgres, one pod, disposable storage, exposed as NodePort 30432
+# (host 55432). The Secret holds LOCAL-DEVELOPMENT DEFAULTS only; there
+# is no real credential anywhere in this repo (rule G7).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-local
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: wcf-physics
+  annotations:
+    wcf-physics/local-development-defaults: "true"
+stringData:
+  POSTGRES_USER: wcf
+  POSTGRES_PASSWORD: wcf-local
+  POSTGRES_DB: bookings
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18.6
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-local
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "wcf", "-d", "bookings"]
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          volumeMounts:
+            # postgres 18+: mount the parent, the image manages the data subdir
+            - name: data
+              mountPath: /var/lib/postgresql
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 30432

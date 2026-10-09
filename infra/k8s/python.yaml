@@ -1,0 +1,63 @@
+# Python stack: image wcf-physics/python:dev, NodePort 30083 (host 8083).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: python
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: python
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: python
+    spec:
+      containers:
+        - name: python
+          image: wcf-physics/python:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: postgresql://wcf:wcf-local@postgres:5432/bookings
+            - name: DB_SCHEMA
+              value: python
+            - name: STACK
+              value: python
+            - name: DB_POOL_SIZE
+              value: "10"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: "1"
+            limits:
+              cpu: "2"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: python
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: python
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: python
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30083
