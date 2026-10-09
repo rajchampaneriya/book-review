@@ -31,6 +31,7 @@ const successful_attempt_duration = new Trend('successful_attempt_duration');
 
 export const options = {
   discardResponseBodies: true,
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   scenarios: {
     exp3: {
       executor: 'constant-arrival-rate',
