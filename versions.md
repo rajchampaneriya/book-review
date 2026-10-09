@@ -52,5 +52,7 @@ psycopg[binary] 3.3.6 (cp314 wheels confirmed on PyPI), matplotlib 3.11.2.
   `FAULT_INJECTION` unset for contract test 8.
 - runs.csv rows written before the fault-injection toggle and the p(99) fix
   (the RUN=0 smoke row and the first python/naive/f0.05/r1 row with
-  duplicates=0) are invalid evidence; the author should delete them from
-  results/exp3/runs.csv before the matrix (results/ is protected for the agent).
+  duplicates=0) were invalid evidence and were removed at the author's
+  instruction; the two remaining rows and their raw summaries are valid. The
+  p99_ms values in them are 0 because the p(99) trend-stat fix landed after
+  those runs; rows from the matrix will carry real p99 values.
