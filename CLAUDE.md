@@ -49,6 +49,9 @@ so the host needs no JDK, .NET SDK or Python 3.14.
 .gitattributes                            # starter kit; LF line endings everywhere
 CLAUDE.md                                 # these instructions (protected)
 CLAUDE.local.md                           # (optional) author's private notes, gitignored
+AGENTS.md                                 # (optional) Codex instructions (same role as CLAUDE.md)
+.codex/                                   # (optional) Codex agent configuration (mirrors .claude/)
+  **                                      # config.toml, hooks.json, hooks/
 LICENSE                                   # MIT
 Makefile                                  # the commands below; ENGINE = docker or podman, detected
 README.md                                 # code README, written in P5
