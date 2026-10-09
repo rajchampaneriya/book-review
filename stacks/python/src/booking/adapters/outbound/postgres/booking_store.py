@@ -80,5 +80,5 @@ class PostgresBookingStore:
                     yield PostgresBookingTransaction(conn, self._schema)
             except asyncpg.UniqueViolationError as e:
                 if e.sqlstate == "23505":
-                    raise KeyAlreadyClaimedError(e.diag.message_detail or "") from e
+                    raise KeyAlreadyClaimedError(str(e)) from e
                 raise

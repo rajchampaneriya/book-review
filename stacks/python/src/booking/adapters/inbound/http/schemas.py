@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BookingRequest(BaseModel):
@@ -12,7 +12,7 @@ class BookingRequest(BaseModel):
     session_id: str
     dog_id: str
     owner_id: str
-    deposit_cents: int
+    deposit_cents: int = Field(strict=True)  # no "2500"-string coercion
 
 
 class BookingResponse(BaseModel):
