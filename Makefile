@@ -4,7 +4,7 @@ VARIANT ?= naive
 FAULT ?= 0.05
 RUN ?= 1
 
-.PHONY: doctor up down deploy unit arch contract exp3
+.PHONY: doctor up down deploy unit arch contract exp3 exp3-all summary chart
 
 doctor:
 	bash infra/scripts/doctor.sh
@@ -30,3 +30,12 @@ contract:
 
 exp3:
 	STACK=$(STACK) VARIANT=$(VARIANT) FAULT=$(FAULT) RUN=$(RUN) .venv/bin/python -m harness.exp3_run
+
+exp3-all:
+	.venv/bin/python -m harness.exp3_matrix
+
+summary:
+	.venv/bin/python -m harness.exp3_summary
+
+chart:
+	.venv/bin/python figures/exp3_duplicates.py
