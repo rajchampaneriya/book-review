@@ -1,4 +1,4 @@
-package booking-application.work.rajc.booking.application.port.in;
+package work.rajc.booking.application.port.in;
 
 final class BookSessionNaiveUseCase {
 }

@@ -1,4 +1,4 @@
-package booking-domain.work.rajc.booking.domain;
+package work.rajc.booking.domain;
 
 final class InvalidDepositException {
 }

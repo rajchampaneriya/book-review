@@ -1,4 +1,4 @@
-package booking-application.work.rajc.booking.application.service;
+package work.rajc.booking.application.service;
 
 final class RequestHash {
 }

@@ -1,4 +1,4 @@
-package booking-application.work.rajc.booking.application.port.out;
+package work.rajc.booking.application.port.out;
 
 final class KeyAlreadyClaimedException {
 }
