@@ -1,0 +1,10 @@
+{
+  "os": "Darwin 27.0.0 (<function machine at 0x1059dbd70>)",
+  "cpu_model": "Apple M4",
+  "cpu_cores": 10,
+  "memory_gb": 34.4,
+  "container_engine": "Docker version 29.6.2",
+  "k3d": "k3d version v5.9.0",
+  "kubectl": "Client Version: v1.36.1",
+  "k6": "k6 v2.3.0 (commit/devel, go1.27.1, darwin/arm64)"
+}
