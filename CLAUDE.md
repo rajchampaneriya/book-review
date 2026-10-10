@@ -248,7 +248,7 @@ stacks/
         FaultHook.java
         ApiExceptionHandler.java          # invalid body -> 400 invalid_request
     booking-adapter-out-postgres/
-      pom.xml                             # booking-application, spring-boot-starter-jdbc, postgresql
+      pom.xml                             # booking-application, spring-boot-starter-jdbc, jackson-databind (stored result jsonb), postgresql
       src/main/java/work/rajc/booking/adapter/out/postgres/
         PostgresBookingStore.java         # TransactionTemplate; SQLSTATE 23505 -> KeyAlreadyClaimedException
         PostgresBookingTransaction.java
