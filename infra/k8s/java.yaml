@@ -26,6 +26,12 @@ spec:
           env:
             - name: DATABASE_URL
               value: postgresql://wcf:wcf-local@postgres:5432/bookings
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres:5432/bookings
+            - name: SPRING_DATASOURCE_USERNAME
+              value: wcf
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: wcf-local
             - name: DB_SCHEMA
               value: java
             - name: STACK

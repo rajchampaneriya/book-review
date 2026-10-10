@@ -1,1 +1,20 @@
-# stub; filled in P2.6
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/bookings}
+    username: ${SPRING_DATASOURCE_USERNAME:wcf}
+    password: ${SPRING_DATASOURCE_PASSWORD:wcf-local}
+    hikari:
+      maximum-pool-size: 20   # spec: 20 connections per service
+  jackson:
+    property-naming-strategy: SNAKE_CASE   # DTO fields in snake_case, the spec's wire format
+    deserialization:
+      fail-on-unknown-properties: true   # G1: reject unknown fields
+
+app:
+  database-schema: ${DB_SCHEMA:java}
+  stack: ${STACK:java}
+  fault-injection: ${FAULT_INJECTION:}
+  fault-hold-ms: ${FAULT_HOLD_MS:2000}
