@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\Rajc.Bookings.Application\Rajc.Bookings.Application.csproj" />
+    <ProjectReference Include="..\Rajc.Bookings.Adapters.Inbound.Http\Rajc.Bookings.Adapters.Inbound.Http.csproj" />
+    <ProjectReference Include="..\Rajc.Bookings.Adapters.Outbound.Postgres\Rajc.Bookings.Adapters.Outbound.Postgres.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="src/Rajc.Bookings.Domain/Rajc.Bookings.Domain.csproj" />
+  <Project Path="src/Rajc.Bookings.Application/Rajc.Bookings.Application.csproj" />
+  <Project Path="src/Rajc.Bookings.Adapters.Inbound.Http/Rajc.Bookings.Adapters.Inbound.Http.csproj" />
+  <Project Path="src/Rajc.Bookings.Adapters.Outbound.Postgres/Rajc.Bookings.Adapters.Outbound.Postgres.csproj" />
+  <Project Path="src/Rajc.Bookings.Bootstrap/Rajc.Bookings.Bootstrap.csproj" />
+  <Project Path="tests/Rajc.Bookings.Application.Tests/Rajc.Bookings.Application.Tests.csproj" />
+  <Project Path="tests/Rajc.Bookings.ArchitectureTests/Rajc.Bookings.ArchitectureTests.csproj" />
+</Solution>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rajc.Bookings.Domain\Rajc.Bookings.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Rajc.Bookings.Application\Rajc.Bookings.Application.csproj" />
+    <ProjectReference Include="..\..\src\Rajc.Bookings.Adapters.Inbound.Http\Rajc.Bookings.Adapters.Inbound.Http.csproj" />
+    <ProjectReference Include="..\..\src\Rajc.Bookings.Adapters.Outbound.Postgres\Rajc.Bookings.Adapters.Outbound.Postgres.csproj" />
+    <ProjectReference Include="..\..\src\Rajc.Bookings.Bootstrap\Rajc.Bookings.Bootstrap.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+</Project>

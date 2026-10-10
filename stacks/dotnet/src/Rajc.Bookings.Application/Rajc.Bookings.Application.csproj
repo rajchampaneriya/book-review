@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Rajc.Bookings.Domain\Rajc.Bookings.Domain.csproj" />
+  </ItemGroup>
+</Project>
