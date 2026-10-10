@@ -1,4 +1,6 @@
 package work.rajc.booking.application.port.in;
 
-final class BookSessionIdempotentUseCase {
+public interface BookSessionIdempotentUseCase {
+
+    BookingOutcome book(String key, BookSessionCommand command);
 }

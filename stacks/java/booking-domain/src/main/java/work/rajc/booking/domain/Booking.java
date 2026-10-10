@@ -1,4 +1,12 @@
 package work.rajc.booking.domain;
 
-final class Booking {
+import java.util.UUID;
+
+public record Booking(
+        UUID id,
+        String clientRef,
+        String sessionId,
+        String dogId,
+        String ownerId,
+        DepositAmount deposit) {
 }

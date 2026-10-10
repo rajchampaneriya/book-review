@@ -1,4 +1,7 @@
 package work.rajc.booking.application.port.in;
 
-final class BookingConfirmation {
+public record BookingConfirmation(
+        String bookingId,
+        String chargeId,
+        String status) {
 }

@@ -1,4 +1,6 @@
 package work.rajc.booking.application.port.in;
 
-final class BookSessionNaiveUseCase {
+public interface BookSessionNaiveUseCase {
+
+    BookingConfirmation book(BookSessionCommand command);
 }
