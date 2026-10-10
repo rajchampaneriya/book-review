@@ -1,8 +1,9 @@
 # Exact versions used
 
 Every runtime, framework, package and image tag actually used, verified from
-the registries (PyPI JSON API, Docker Hub) or the tools themselves on
-2026-10-09/10. Update this file whenever a version changes.
+the registries (PyPI JSON API, NuGet flat-container API, Maven Central
+metadata, Docker Hub / MCR tags) or the tools themselves on 2026-10-09/10.
+Update this file whenever a version changes.
 
 ## Host (macOS 27.0, arm64)
 
@@ -31,9 +32,35 @@ psycopg[binary] 3.3.6 (cp314 wheels confirmed on PyPI), matplotlib 3.11.2.
 | pytest | 9.1.1 | PyPI |
 | import-linter | 2.15 | PyPI |
 
-## Java stack (stacks/java, P2) — not built yet
+Pool and threads: 2 Uvicorn workers x DB_POOL_SIZE 10 = 20 connections.
 
-## .NET stack (stacks/dotnet, P2) — not built yet
+## .NET stack (stacks/dotnet)
+
+| Component | Version | Verified |
+| --- | --- | --- |
+| SDK image | mcr.microsoft.com/dotnet/sdk:10.0.401 | MCR tags API |
+| Runtime image | mcr.microsoft.com/dotnet/aspnet:10.0 (10.0.12) | MCR tags API |
+| Npgsql | 10.0.3 | NuGet |
+| NetArchTest.Rules | 1.3.2 | NuGet |
+| xunit / runner.visualstudio / Test SDK | 2.9.3 / 3.1.5 / 18.10.1 | NuGet |
+
+Pool and threads: NpgsqlDataSourceBuilder.ConnectionStringBuilder.MaxPoolSize
+= 20; Kestrel default threading.
+
+## Java stack (stacks/java)
+
+| Component | Version | Verified |
+| --- | --- | --- |
+| Build image | maven:3.9.16-eclipse-temurin-25 | Docker Hub tags API |
+| Runtime image | eclipse-temurin:25-jre | Docker Hub tags API |
+| Spring Boot | 4.1.1 (newest stable 4.1.x) | Maven Central |
+| postgresql (JDBC) | 42.7.14 | Maven Central |
+| ArchUnit / archunit-junit5 | 1.5.1 | Maven Central |
+| Jackson (transitive via Boot 4, Jackson 3: tools.jackson) | Boot-managed | - |
+| jackson-databind (2.x, only in booking-adapter-out-postgres) | Boot-managed | - |
+
+Pool and threads: HikariCP maximum-pool-size 20; Tomcat default
+platform-thread pool (spec: virtual threads belong to post 2).
 
 ## Infrastructure
 
@@ -53,6 +80,18 @@ psycopg[binary] 3.3.6 (cp314 wheels confirmed on PyPI), matplotlib 3.11.2.
 - runs.csv rows written before the fault-injection toggle and the p(99) fix
   (the RUN=0 smoke row and the first python/naive/f0.05/r1 row with
   duplicates=0) were invalid evidence and were removed at the author's
-  instruction; the two remaining rows and their raw summaries are valid. The
-  p99_ms values in them are 0 because the p(99) trend-stat fix landed after
-  those runs; rows from the matrix will carry real p99 values.
+  instruction. The python rows from that night also carry p99_ms=0 (the
+  p(99) trend-stat fix landed after them); dotnet and java rows are complete.
+- Npgsql 10: `NpgsqlDataSourceBuilder` rejects URI-style connection strings
+  (`postgresql://...`) and has no `MaxPoolSize` builder method and no
+  pool keywords in the connection string; the bootstrap translates
+  DATABASE_URL into keywords and sets `ConnectionStringBuilder.MaxPoolSize`.
+- Spring Boot 4 is Jackson 3 (`tools.jackson.*`): `JsonMapperBuilderCustomizer`
+  replaces `Jackson2ObjectMapperBuilderCustomizer`; quoted numbers are rejected
+  through `withCoercionConfigDefaults`.
+- booking-adapter-out-postgres/pom.xml also declares jackson-databind
+  (Boot-managed 2.x) for reading/writing the stored-result jsonb; the CLAUDE.md
+  tree comment for that pom lists three dependencies.
+- VS Code: the root .venv also carries an editable install of stacks/python
+  (machine-local, gitignored) so Pylance resolves `booking` and fastapi; stack
+  builds and tests still run only in containers.
