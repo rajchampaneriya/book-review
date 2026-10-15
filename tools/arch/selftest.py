@@ -6,7 +6,8 @@ agent is told to build. For each stack, the complete tree must pass; then every 
 must be caught with the expected rule: layering, frameworks in the core, naming conventions, folders
 against packages and namespaces, files outside the tree, files missing from the tree, and missing or
 modified architecture tests. Ignored build and cache folders and optional entries must not fail.
-The same is checked for the whole repo (--all, --all --complete) and for a malformed tree.
+The same is checked for the whole repo (--all, --all --complete) and for a malformed tree, and for
+the BDD standards in bdd/ and the AGENTS.md mirror of the tree (--all and the bdd scope).
 
 Run: python3 tools/arch/selftest.py   (exit 0 = every case behaved as expected)
 """
@@ -321,6 +322,78 @@ REPO_MISSING = [
 ]
 
 
+# ----------------------------------------------------------------- review files, bdd/ and the AGENTS.md mirror
+BDD_FEATURE = """@exp3 @spec-exp3-L81-106
+Feature: A retried booking is booked once
+  As a client whose confirmation can be lost
+  I want a retry with the same request key to return the original confirmation
+
+  Background:
+    Given the booking service is running
+
+  Scenario: Retrying with the same request key replays the confirmation
+    Given the client has booked with a fresh request key
+    When the client retries with the same request key
+    Then the client receives the original confirmation
+    And exactly one booking exists for that request
+
+  @contract-5
+  Scenario Outline: Reusing a request key for another booking is refused
+    Given the client has booked with a fresh request key
+    When the client books again with a different <detail>
+    Then the booking is refused as a conflict
+
+    Examples:
+      | detail |
+      | owner  |
+
+    @known-defect
+    Examples: Not refused today
+      | detail |
+      | dog    |
+"""
+F = "bdd/features/probe.feature"
+
+
+def feature(*steps: str, header: str = "@spec-exp3\nFeature: probe\n", background: str = "") -> str:
+    """A one-scenario feature file with the given steps."""
+    return header + background + "  Scenario: probe\n" + "".join(f"    {s}\n" for s in steps)
+
+
+AGENTS_OK = CLAUDE_MD.replace("instructions for Claude Code", "instructions for Codex", 1)
+REVIEW_ALLOWED = {
+    "TASKS.md": "# tasks\n",
+    "docs/review/BDD_REVIEW.md": "# review\n",
+    "docs/review/architecture.excalidraw": "{}\n",
+    "bdd/features/booking.feature": BDD_FEATURE,
+    "bdd/steps/conftest.py": "",
+    "bdd/steps/test_booking.py": "",
+    "bdd/steps/__pycache__/drivers.cpython-314.pyc": "",
+    "AGENTS.md": AGENTS_OK,
+}
+BDD_BAD = [
+    ("a non-feature file in bdd/features", {"bdd/features/notes.md": "x\n"}, "bdd layout"),
+    ("a file directly under bdd/", {"bdd/README.md": "x\n"}, "bdd layout"),
+    ("a non-Python file in bdd/steps", {"bdd/steps/data.json": "{}\n"}, "bdd layout"),
+    ("a feature file without a Feature", {F: "  Scenario: probe\n    Given a\n    When b\n    Then c\n"}, "exactly one Feature"),
+    ("a scenario with two steps", {F: feature("When b", "Then c")}, "has 2 steps"),
+    ("a scenario with eight steps", {F: feature("Given a", "And a", "And a", "And a", "And a", "And a", "When b", "Then c")}, "has 8 steps"),
+    ("a scenario with two actions", {F: feature("Given a", "When b", "And c", "Then d")}, "has 2 actions"),
+    ("an outcome before the action", {F: feature("Given a", "Then b", "When c", "Then d")}, "out of order"),
+    ("a scenario without an outcome", {F: feature("Given a", "And b", "When c")}, "no Then outcome"),
+    ("a scenario starting with And", {F: feature("And a", "When b", "Then c")}, "starts with And"),
+    ("a Scenario Outline without Examples",
+     {F: "@spec-exp3\nFeature: probe\n  Scenario Outline: probe <n>\n    Given a <n>\n    When b\n    Then c\n"}, "without Examples"),
+    ("a scenario without a traceability tag", {F: feature("Given a", "When b", "Then c", header="Feature: probe\n")}, "no traceability tag"),
+    ("a Background with an action",
+     {F: feature("Given a", "When b", "Then c", background="  Background:\n    Given x\n    When y\n")}, "Background holds context only"),
+]
+MIRROR_BAD = [
+    ("an AGENTS.md whose tree drifted", {"AGENTS.md": AGENTS_OK.replace("\n.codex/", "\n.Codex/", 1)}, "mirror tree differs"),
+    ("an AGENTS.md without the tree", {"AGENTS.md": "# instructions for Codex\n"}, "mirror tree missing"),
+]
+
+
 def broken_trees() -> list[tuple[str, str, str]]:
     lines = CLAUDE_MD.splitlines(keepends=True)
     hooks = next(i for i, l in enumerate(lines) if l.strip().startswith("hooks/"))
@@ -405,6 +478,20 @@ def main() -> int:
         record(code == 0, f"repo    --all tolerates work in progress: {path} not written yet", out)
         code, out = scenario(repo, "--all", "--complete", drop=path)
         record(code == 1 and expect in out, f"repo    --complete catches: {path} missing", f"  expected '{expect}', exit {code}:\n{out}")
+
+    reviewed = {**repo, **REVIEW_ALLOWED}
+    code, out = scenario(reviewed, "--all")
+    record(code == 0 and "AGENTS.md mirror" in out and "bdd" in out,
+           "repo    allows: TASKS.md, docs/review/**, bdd/ features and steps, a mirrored AGENTS.md", out)
+    for name, change, expect in BDD_BAD + MIRROR_BAD:
+        code, out = scenario({**reviewed, **change}, "--all")
+        record(code == 1 and expect in out, f"repo    catches: {name}", f"  expected '{expect}', exit {code}:\n{out}")
+    code, out = scenario(reviewed, "bdd")
+    record(code == 0 and "passed: bdd" in out, "bdd     a well-formed specification passes the bdd scope", out)
+    code, out = scenario({**reviewed, **BDD_BAD[6][1]}, "bdd")
+    record(code == 1 and "has 2 actions" in out, "bdd     the bdd scope catches a bad scenario on its own", out)
+    code, out = scenario(repo, "bdd")
+    record(code == 0 and "nothing to check yet" in out, "bdd     the bdd scope tolerates a repo without bdd/", out)
 
     code, out = scenario({"LICENSE": "MIT\n"}, "--all")
     record(code == 1 and "structure tree missing" in out, "tree    catches: no CLAUDE.md", out)

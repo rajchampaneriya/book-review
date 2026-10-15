@@ -10,6 +10,11 @@ Fast (no build, no SDK) and language-aware:
              folders mirror packages, lowercase packages, UpperCamelCase class files
   dotnet     using directives, fully qualified references, .csproj SDK and references;
              namespaces mirror project and folders, PascalCase file names
+  mirror     AGENTS.md, when present, holds CLAUDE.md's folder tree verbatim (Codex reads it)
+  bdd        bdd/ (optional) holds only features/*.feature and steps/*.py, and every scenario meets
+             the BDD standards: 3-7 steps, exactly one When, Given -> When -> Then ending in an
+             outcome, a Background with context only, Examples for every Scenario Outline, and a
+             traceability tag (@spec-..., @contract-... or @rule-...)
 
 Layers, from the inside out:
   domain       entities and value objects; standard library only
@@ -27,9 +32,12 @@ Usage:
   check_hexagonal.py python|java|dotnet [--root REPO_ROOT]
       one stack: its layers and names, no files outside its part of the tree, and every listed
       file present (make arch)
+  check_hexagonal.py bdd [--root REPO_ROOT]
+      the BDD specification under bdd/ only (make bdd)
   check_hexagonal.py --all [--complete] [--root REPO_ROOT]
-      the whole repo: no files outside the tree, plus layers and names of every stack that exists
-      (the Stop hook); --complete also requires every listed, non-optional file (publish check)
+      the whole repo: no files outside the tree, the AGENTS.md mirror, bdd/ when it exists, plus
+      layers and names of every stack that exists (the Stop hook); --complete also requires every
+      listed, non-optional file (publish check)
 
 Exit codes: 0 no violations, 1 violations found, 2 usage error.
 
@@ -40,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import difflib
 import os
 import re
 import sys
@@ -745,13 +754,198 @@ def check_dotnet(root: Path) -> list[Violation]:
     return out
 
 
+# --------------------------------------------------------------------------- AGENTS.md mirror
+#
+# AGENTS.md (optional) gives Codex the same role CLAUDE.md gives Claude Code, so it must describe
+# the same repository: its folder tree, between the same markers, is CLAUDE.md's tree verbatim.
+
+MIRROR_FILE = "AGENTS.md"
+
+
+def structure_block(text: str) -> tuple[int, list[str]] | None:
+    """(line number of the begin marker, lines inside the markers), or None without exactly one pair."""
+    lines = text.splitlines()
+    begins = [i for i, l in enumerate(lines) if l.strip() == STRUCTURE_BEGIN]
+    ends = [i for i, l in enumerate(lines) if l.strip() == STRUCTURE_END]
+    if len(begins) != 1 or len(ends) != 1 or ends[0] < begins[0]:
+        return None
+    return begins[0] + 1, [l.rstrip() for l in lines[begins[0] + 1:ends[0]]]
+
+
+def check_agents_mirror(root: Path) -> list[Violation]:
+    mirror, main = root / MIRROR_FILE, root / STRUCTURE_FILE
+    if not mirror.is_file() or not main.is_file():
+        return []
+    ours = structure_block(main.read_text(encoding="utf-8"))
+    if ours is None:
+        return []  # parse_structure already reports a missing or broken CLAUDE.md tree
+    theirs = structure_block(mirror.read_text(encoding="utf-8"))
+    if theirs is None:
+        return [Violation("structure", MIRROR_FILE, 0, "mirror tree missing",
+                          f"AGENTS.md must hold CLAUDE.md's folder tree between {STRUCTURE_BEGIN} and {STRUCTURE_END}")]
+    (_, a), (start, b) = ours, theirs
+    if a == b:
+        return []
+    out: list[Violation] = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        line = start + j1 + 1 if j1 < len(b) else start + len(b)
+        if tag == "delete":
+            detail = f"missing '{a[i1].strip()}'"
+        elif tag == "insert":
+            detail = f"extra '{b[j1].strip()}'"
+        else:
+            detail = f"'{b[j1].strip()}' where CLAUDE.md has '{a[i1].strip()}'"
+        out.append(Violation("structure", f"{MIRROR_FILE}:{line}", 0, "mirror tree differs",
+                             f"{detail}; copy the tree from CLAUDE.md verbatim"))
+        if len(out) == 3:
+            break
+    return out
+
+
+# --------------------------------------------------------------------------- bdd (Gherkin standards)
+#
+# bdd/ is optional. When it exists, features/ holds only *.feature files and steps/ only *.py files,
+# and every scenario meets the BDD standards in CLAUDE.md: 3 to 7 steps; exactly one action (When,
+# plus any And or But that follows it); Given, then When, then Then, ending in an outcome; a
+# Background with context only; Examples for every Scenario Outline; and a traceability tag
+# (@spec-..., @contract-... or @rule-...) on the scenario, its Rule or its Feature. The reader below
+# is a small subset of Gherkin, enough for these rules; it needs no third-party package.
+
+BDD_DIR = "bdd"
+BDD_TRACE_TAGS = ("@spec-", "@contract-", "@rule-")
+BDD_MIN_STEPS, BDD_MAX_STEPS = 3, 7
+GHERKIN_SCENARIO = re.compile(r"^(Scenario Outline|Scenario Template|Scenario|Example):")
+GHERKIN_STEP = re.compile(r"^(Given|When|Then|And|But|\*)(\s|$)")
+STEP_ORDER = {"Given": 0, "When": 1, "Then": 2}
+STEP_NAMES = ("Given", "When", "Then")
+
+
+@dataclass
+class GherkinScenario:
+    name: str
+    line: int
+    outline: bool
+    tags: list[str]
+    steps: list[tuple[int, str]]  # (line, keyword)
+    examples: bool = False
+
+
+def step_kinds(steps: list[tuple[int, str]]) -> list[int | None]:
+    """Given/When/Then as 0/1/2; And, But and * take the kind of the step before them."""
+    kinds: list[int | None] = []
+    last: int | None = None
+    for _, keyword in steps:
+        last = STEP_ORDER.get(keyword, last)
+        kinds.append(last)
+    return kinds
+
+
+def read_feature(text: str) -> tuple[int, list[str], list[tuple[int, str]], list[GherkinScenario]]:
+    """(Feature count, Feature tags, Background steps, scenarios) of one .feature file."""
+    features, feature_tags, background = 0, [], []
+    scenarios: list[GherkinScenario] = []
+    pending: list[str] = []
+    rule_tags: list[str] = []
+    section, current, in_doc = "", None, False
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if line.startswith(('"""', "```")):
+            in_doc = not in_doc
+            continue
+        if in_doc or not line or line.startswith(("#", "|")):
+            continue
+        if line.startswith("@"):
+            pending += [t for t in line.split() if t.startswith("@")]
+            continue
+        if line.startswith("Feature:"):
+            features, feature_tags, rule_tags = features + 1, pending, []
+            section, current = "feature", None
+        elif line.startswith("Rule:"):
+            rule_tags, section, current = pending, "rule", None
+        elif line.startswith("Background:"):
+            section, current = "background", None
+        elif GHERKIN_SCENARIO.match(line):
+            keyword = GHERKIN_SCENARIO.match(line).group(1)
+            current = GherkinScenario(line.split(":", 1)[1].strip(), lineno, keyword in ("Scenario Outline", "Scenario Template"),
+                                      pending + rule_tags, [])
+            scenarios.append(current)
+            section = "scenario"
+        elif line.startswith(("Examples:", "Scenarios:")):
+            if current is not None:
+                current.examples = True
+        elif GHERKIN_STEP.match(line):
+            keyword = GHERKIN_STEP.match(line).group(1)
+            if section == "background":
+                background.append((lineno, keyword))
+            elif current is not None:
+                current.steps.append((lineno, keyword))
+            continue
+        else:
+            continue  # free-text description
+        pending = []
+    return features, feature_tags, background, scenarios
+
+
+def lint_feature(path: str, text: str) -> list[Violation]:
+    out: list[Violation] = []
+
+    def bad(line: int, rule: str, detail: str) -> None:
+        out.append(Violation("bdd", path, line, rule, detail))
+
+    features, feature_tags, background, scenarios = read_feature(text)
+    if features != 1:
+        bad(0, "one feature per file", f"a feature file holds exactly one Feature, found {features}")
+    if background and any(k != 0 for k in step_kinds(background)):
+        bad(background[0][0], "background is context", "Background holds context only (Given steps); move actions and outcomes into the scenarios")
+    for s in scenarios:
+        label = f"'{s.name}'"
+        kinds = step_kinds(s.steps)
+        if not BDD_MIN_STEPS <= len(s.steps) <= BDD_MAX_STEPS:
+            bad(s.line, "scenario length", f"{label} has {len(s.steps)} steps; keep scenarios to {BDD_MIN_STEPS}-{BDD_MAX_STEPS} steps")
+        if s.steps and kinds[0] is None:
+            bad(s.steps[0][0], "step order", f"{label} starts with {s.steps[0][1]}; start with Given, When or Then")
+        actions = kinds.count(1)
+        if actions != 1:
+            bad(s.line, "one action", f"{label} has {actions} actions (When and the And/But after it); a scenario has exactly one When")
+        known = [k for k in kinds if k is not None]
+        if known != sorted(known):
+            bad(s.line, "step order", f"{label} has steps out of order; use Given (context), then When (action), then Then (outcome)")
+        if kinds and kinds[-1] != 2:
+            bad(s.line, "observable outcome", f"{label} has no Then outcome at the end")
+        if s.outline and not s.examples:
+            bad(s.line, "outline needs examples", f"{label} is a Scenario Outline without Examples")
+        if not any(t.startswith(BDD_TRACE_TAGS) for t in s.tags + feature_tags):
+            bad(s.line, "traceability", f"{label} has no traceability tag ({', '.join(t + '...' for t in BDD_TRACE_TAGS)}) on it, its Rule or its Feature")
+    return out
+
+
+def check_bdd(root: Path) -> list[Violation]:
+    base = root / BDD_DIR
+    if not base.is_dir():
+        return []
+    out: list[Violation] = []
+    for f in repo_files(base, root):
+        parts = f.split("/")
+        if len(parts) == 3 and parts[1] == "features" and parts[2].endswith(".feature"):
+            out += lint_feature(f, (root / f).read_text(encoding="utf-8"))
+        elif len(parts) == 3 and parts[1] == "steps" and parts[2].endswith(".py"):
+            continue
+        else:
+            out.append(Violation("bdd", f, 0, "bdd layout",
+                                 "only features/*.feature and steps/*.py belong under bdd/; move or remove it"))
+    return out
+
+
 CHECKS = {"python": check_python, "java": check_java, "dotnet": check_dotnet}
 
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("stack", nargs="?", choices=sorted(CHECKS))
-    ap.add_argument("--all", action="store_true", help="whole repo: no files outside the tree, every existing stack")
+    ap.add_argument("stack", nargs="?", choices=[*sorted(CHECKS), BDD_DIR], help="one stack, or bdd for the BDD specification")
+    ap.add_argument("--all", action="store_true",
+                    help="whole repo: no files outside the tree, the AGENTS.md mirror, bdd/, every existing stack")
     ap.add_argument("--complete", action="store_true", help="with --all: every listed, non-optional file must exist")
     ap.add_argument("--root", default=str(Path(__file__).resolve().parents[2]), help="repo root")
     args = ap.parse_args(argv)
@@ -765,7 +959,19 @@ def main(argv: list[str]) -> int:
         if structure:
             violations += check_structure(root, structure, "structure", None, complete=args.complete)
         checked.append("folder structure" + (" (complete)" if args.complete else ""))
+        if (root / MIRROR_FILE).is_file():
+            violations += check_agents_mirror(root)
+            checked.append("AGENTS.md mirror")
+        if (root / BDD_DIR).is_dir():
+            violations += check_bdd(root)
+            checked.append("bdd")
         stacks = [s for s in sorted(CHECKS) if (root / "stacks" / s).is_dir()]
+    elif args.stack == BDD_DIR:
+        if structure:
+            violations += check_structure(root, structure, BDD_DIR, BDD_DIR, complete=False)
+        violations += check_bdd(root)
+        checked.append("bdd" if (root / BDD_DIR).is_dir() else "bdd (nothing to check yet)")
+        stacks = []
     else:
         if structure:
             violations += check_structure(root, structure, args.stack, f"stacks/{args.stack}", complete=True)
