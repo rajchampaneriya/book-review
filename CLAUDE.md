@@ -40,7 +40,7 @@ names ending in `/` are folders, and one folder line may hold several segments
 (stubs are fine while building) and nothing else. `*` matches within one name and `**` any path below
 its folder; entries marked `(optional)` may be absent, and so may everything under them. Ignored everywhere: `.git/`, `.venv/`, `venv/`,
 `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, `.import_linter_cache/`,
-`*.egg-info/`, `node_modules/`, `target/`, `bin/`, `obj/`, `TestResults/`, `.idea/`, `.vscode/`,
+`*.egg-info/`, `node_modules/`, `target/`, `bin/`, `obj/`, `TestResults/`, `.idea/`,
 `.DS_Store`. Review notes, the task backlog and BDD specifications are not stack code: put them under
 the optional `TASKS.md`, `docs/review/` and `bdd/` entries without asking. For any other file that is
 not listed, stop and ask the author to add it here first. `AGENTS.md`, when present, carries this tree
@@ -63,6 +63,9 @@ README.md                                 # code README, written in P5
 TASKS.md                                  # (optional) review backlog: Done, In Progress, Not Started, Open Questions, execution sequence
 requirements-host.txt                     # pinned host tools for .venv: pytest, pytest-bdd, httpx, psycopg[binary], matplotlib
 versions.md                               # every runtime, framework, package and image tag actually used
+.vscode/                                  # editor config: interpreter, pytest discovery, extension recommendations
+  settings.json                           # default interpreter ${workspaceFolder}/.venv, pytest discovery on bdd/steps
+  extensions.json                         # recommends the Cucumber Open (Gherkin) extension
 .claude/                                  # protected
   settings.json                           # hooks, auto memory off
   settings.local.json                     # (optional) written by Claude Code when you approve permissions

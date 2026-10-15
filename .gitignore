@@ -17,7 +17,6 @@ venv/
 # OS and IDE
 .DS_Store
 .idea/
-.vscode/
 
 # author-local, never committed
 .claude/settings.local.json
