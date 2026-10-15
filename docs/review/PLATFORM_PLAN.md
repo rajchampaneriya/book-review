@@ -1,6 +1,6 @@
 # Platform plan: Kubernetes objects, Istio and OpenTelemetry
 
-Status: **proposal, waiting for the author's approval.** Nothing in this plan is built yet. The diagrams are in
+Status: **decisions taken; waiting for the CLAUDE.md tree entries in section 4.** Nothing in this plan is built yet. The diagrams are in
 `docs/review/platform-istio-otel.drawio` (six pages, with a PNG preview of each page next to it).
 
 The plan starts with the Python stack. .NET and Java follow the same pattern afterwards, because rule G8 needs the
@@ -34,6 +34,9 @@ same behaviour in every stack.
 | D4 | How host traffic enters once mTLS is STRICT | through an Istio ingress gateway on a new host port, or the NodePorts stay PERMISSIVE | **Gateway for the mesh demo; NodePorts unchanged for the spec setup.** The gateway needs a new k3d port mapping, which is a spec change. |
 | D5 | Dashboard backend | `grafana/otel-lgtm` (one pod: Grafana, a Prometheus-compatible store, Tempo, Loki), or kube-prometheus-stack plus Tempo and Loki | **otel-lgtm.** Grafana describes it as an image for development, demos and testing, which fits one k3d node. |
 | D6 | Scope | Python first, then .NET and Java; or all three at once | **Python first.** Keep the overlay off in measured runs until all three stacks have it (G8). |
+
+**Decided by the author on 2026-10-15:** D1 ambient, D2 opt-in overlay, D3 read-only duplicate audit, D6 Python
+first. D4 and D5 follow the recommendation unless the author says otherwise.
 
 ## 3. Proposed design
 
