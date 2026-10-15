@@ -43,7 +43,7 @@ flowchart LR
 
 ### Stage 0 · Contain (today)
 
-1. **Review and commit the unblocking change and the review files.** You. Needs nothing.
+1. **Review and commit the unblocking change and the review files.** You. Needs nothing. *In progress:* branch `review/bdd-structure-gate` holds the review files; apply `protected-changes.patch` there for the CLAUDE.md, AGENTS.md and `tools/arch/` part.
    Check: `python3 tools/arch/check_hexagonal.py --all` passes and `python3 tools/arch/selftest.py` reports 114/114.
    Done when: *Review and BDD files are allowed by the structure gate*.
 2. **Quarantine `figures/exp3_duplicates.svg` and `results/exp3/summary.csv`.** You. Needs nothing. Don't publish them; if a post already uses them, plan a correction.
@@ -51,7 +51,7 @@ flowchart LR
 
 ### Stage 1 · Make the BDD layer runnable, red first
 
-3. **Pin `pytest-bdd==9.0.0` in `requirements-host.txt` and `versions.md`, and add a `make bdd` target.** Agent; you add the target to the CLAUDE.md commands table. Needs 1.
+3. **Pin `pytest-bdd==9.0.0` in `requirements-host.txt` and `versions.md`, and add a `make bdd` target.** Agent; you add the target to the CLAUDE.md commands table. Needs 1. *In progress:* done on the branch; the commands-table row is in the protected patch.
    Check: `make doctor && make bdd` → 5 passed, 4 failed; each failure names a known defect.
    Done when: *Adopt the BDD layer*.
 4. **Add steps for the remaining harness, summary and chart scenarios, and watch them fail for the right reason.** Agent. Needs 3.
@@ -327,7 +327,7 @@ flowchart LR
 ### Exp 3 · Review and BDD files
 
 - [ ] **Review and BDD files are allowed by the structure gate** — `CLAUDE.md`, `AGENTS.md`, `TASKS.md`, `docs/review/`, `bdd/`
-  - Evidence: the CLAUDE.md tree now lists `TASKS.md`, `docs/review/**` and `bdd/**` as optional, and the clause asking agents to stop for these files now points to them (same change mirrored in AGENTS.md). `check_hexagonal.py --all` passes with the files present, and `selftest.py` still reports 114/114 (run here). Not yet committed: waiting for your review.
+  - Evidence: on branch `review/bdd-structure-gate`, the review files and `bdd/` are committed; the CLAUDE.md tree entries for them are in the author's protected patch (`protected-changes.patch`), because agents may not edit CLAUDE.md or `tools/arch/`. With the patch applied, `check_hexagonal.py --all` passes and `selftest.py` reports 133/133 (run in a scratch clone).
   ```gherkin
   Scenario: Review and BDD files pass the structure gate without weakening it
     Given TASKS.md, docs/review/ and bdd/ hold the review files
@@ -336,13 +336,30 @@ flowchart LR
     And the self-test still catches every stray file it seeds, 114 of 114
   ```
 
-- [ ] **Adopt the BDD layer** — `bdd/features/*.feature`, `bdd/steps/`
-  - Evidence: 8 feature files (37 scenarios) and thin steps are in the repo; `pytest bdd/steps` from the repo root gives 5 passed and 4 failed, each failure a known defect (run here). Not wired yet: `pytest-bdd` is not pinned in `requirements-host.txt` or `versions.md`, and there is no `make bdd` target.
+- [ ] **Adopt the BDD layer** — `bdd/features/*.feature`, `bdd/steps/`, `Makefile`, `requirements-host.txt`
+  - Evidence: on branch `review/bdd-structure-gate`, `pytest-bdd` 9.0.0 is pinned (verified on PyPI) and `make bdd` runs `check_hexagonal.py bdd` then the steps; the four scenarios that describe unfixed defects carry `@known-defect` and run as strict expected failures, so the pytest run reports 5 passed, 4 xfailed (run here). `make bdd` needs the `bdd` scope from the author's protected patch.
   ```gherkin
   Scenario: The BDD scenarios run from a fresh host environment
     Given a fresh .venv built by make doctor
     When make bdd runs
     Then every executable scenario in bdd/features is collected and run
+  ```
+
+- [ ] **The architecture checker enforces the BDD standards and the AGENTS.md mirror** — `tools/arch/check_hexagonal.py`, `tools/arch/selftest.py`
+  - Evidence: written and verified in a scratch clone, delivered as the author's protected patch. New `bdd` scope, also run by `--all`: only `features/*.feature` and `steps/*.py` under `bdd/`; one Feature per file; Background holds context only; 3–7 steps; exactly one When; Given → When → Then ending in Then; Examples for every Scenario Outline; a `@spec-`, `@contract-` or `@rule-` tag. `--all` also fails when AGENTS.md's tree differs from CLAUDE.md's; on `main` today it reports the `.Codex/` drift. `selftest.py` gains 19 cases, 133/133.
+  ```gherkin
+  Scenario Outline: The checker refuses a feature file that breaks a BDD standard
+    Given a feature file with <defect>
+    When the whole repo is checked
+    Then the check fails and names <rule>
+
+    Examples:
+      | defect                               | rule               |
+      | two When steps in one scenario       | one action         |
+      | eight steps in one scenario          | scenario length    |
+      | an outcome before the action         | step order         |
+      | no spec, contract or rule tag        | traceability       |
+      | a Scenario Outline without Examples  | outline needs examples |
   ```
 
 ### Exp 3 · Publish readiness (P5)
