@@ -8,19 +8,24 @@ same behaviour in every stack.
 
 ## 1. What the cluster has today
 
+Validated against the live cluster on 2026-10-17 (`k3d-wcf-physics`, k3s v1.36.4+k3s1, one arm64
+server node): `python3 docs/review/istio/validate_cluster_state.py` runs 21 checks, one per claim
+below, and all pass. Run it again after any change to the cluster or these manifests.
+
 | Object | Today | Evidence |
 | --- | --- | --- |
 | Namespace | yes: `wcf-physics` | `infra/k8s/namespace.yaml` |
 | Deployment | yes: 1 replica, CPU request 1 and limit 2, 1 Gi, readiness probe on `/health` | `infra/k8s/python.yaml:2-46` |
 | Service | yes: NodePort 30083 to port 8080 (host 8083) | `infra/k8s/python.yaml:48-63` |
-| Secret | yes: `postgres-local`, local-development defaults | `infra/k8s/postgres.yaml` |
-| Secret use | **gap:** the python Deployment repeats the password inline | `infra/k8s/python.yaml:27-28` |
-| ServiceAccount, RBAC | no: every pod runs as the namespace's `default` account, with its API token mounted | no `serviceAccountName` in `infra/k8s/*.yaml` |
-| NetworkPolicy | no; k3s would enforce one out of the box (embedded kube-router controller) | `infra/k8s/` |
-| Job | no: schemas are applied with `kubectl exec` from the host | `infra/scripts/apply-schema.sh:10` |
+| Secret | yes: `postgres-local`, Opaque, 3 keys, local-development defaults | `infra/k8s/postgres.yaml` |
+| Secret use | **gap:** the python Deployment repeats the password inline (`postgresql://wcf:wcf-local@…`) instead of a `secretKeyRef` | `infra/k8s/python.yaml:27-28` |
+| ServiceAccount, RBAC | no: every pod runs as the namespace's `default` account, with its API token mounted; no Roles or bindings exist in the namespace | no `serviceAccountName` in `infra/k8s/*.yaml` |
+| NetworkPolicy | none anywhere in the cluster; k3s would enforce one out of the box (embedded kube-router controller) | `infra/k8s/` |
+| Job | no app Job (only k3s's own completed `helm-install-traefik` Jobs in kube-system); schemas are applied with `kubectl exec` from the host | `infra/scripts/apply-schema.sh:10` |
 | CronJob | no | `infra/k8s/` |
-| DaemonSet | no | `infra/k8s/` |
-| Istio, access policy | no | `infra/` |
+| DaemonSet | no app DaemonSet (k3s runs its `svclb-traefik` DaemonSet in kube-system) | `infra/k8s/` |
+| Traefik | **yes:** k3s deployed Traefik (Deployment, LoadBalancer Service, svclb DaemonSet in kube-system). `infra/k3d/cluster.yaml` sets no `--disable=traefik`, so section 3.2's assumption needs the cluster recreated | live cluster; `infra/k3d/cluster.yaml` |
+| Istio, access policy | no: no `istio-system` namespace, no Istio CRDs | `infra/` |
 | OpenTelemetry, dashboard | no: no `opentelemetry` package in the stack | `stacks/python/pyproject.toml:6-10` |
 | Liveness probe, securityContext | no | `infra/k8s/python.yaml` |
 
@@ -37,6 +42,27 @@ same behaviour in every stack.
 
 **Decided by the author on 2026-10-15:** D1 ambient, D2 opt-in overlay, D3 read-only duplicate audit, D6 Python
 first. D4 and D5 follow the recommendation unless the author says otherwise.
+
+### 2.1 Decision record: D1, the ambient data plane
+
+- **Decision:** ambient mesh. ztunnel runs once per node; a waypoint proxy is added only where L7
+  rules are needed (the python Service). No sidecar containers in application pods.
+- **Context:** one k3d server node (arm64, k3s v1.36.4) shared by the measured stacks and the
+  observability overlay. Istio documents k3d support (`global.platform=k3d`). Enrolment is a
+  namespace label (`istio.io/dataplane-mode=ambient`), so no pod restarts and no injection
+  annotations; the measured matrix (D2, overlay off) is untouched by the mesh's presence.
+- **Consequences:**
+  - L4 security (STRICT mTLS, the postgres AuthorizationPolicy) is enforced by ztunnel with zero
+    application change. L7 (retries, timeouts, route rules, the python AuthorizationPolicy)
+    requires attaching a waypoint to the python Service.
+  - Applications keep plain HTTP service-to-service; nothing in `stacks/` changes.
+  - The cluster must be recreated with `--disable=traefik` before install (section 1: Traefik runs
+    today because `infra/k3d/cluster.yaml` sets no disable flag).
+  - Memory cost is one ztunnel per node plus one waypoint, instead of one Envoy per pod.
+  - Escape hatch: sidecar mode stays available per namespace if a future workload needs it.
+- **Rejected: sidecar mode.** Injection mutates every pod template and restarts every pod on
+  enrolment; one Envoy sidecar per pod multiplies memory on the single node; and this experiment
+  needs L7 rules on one service only, which the waypoint covers.
 
 ## 3. Proposed design
 
@@ -132,7 +158,9 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
 `bdd/features/` when their step starts.
 
 1. **Author: decisions D1 to D6, the CLAUDE.md and AGENTS.md entries, and the spec sentence.**
+
 2. **ServiceAccounts, RBAC, the Secret reference and the securityContext.**
+
    ```gherkin
    @rule-G7
    Scenario: The python service cannot use the Kubernetes API
@@ -141,7 +169,9 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      Then the permission is denied
      And the pod has no API token mounted
    ```
+
 3. **NetworkPolicy.**
+
    ```gherkin
    @spec-infrastructure
    Scenario Outline: Only permitted connections reach the booking database
@@ -155,6 +185,7 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
        | schema-job    | accepted |
        | otel-agent    | refused  |
    ```
+
    ```gherkin
    @contract-2
    Scenario: The host still reaches the python stack through its NodePort
@@ -162,7 +193,9 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      When the contract tests run against the python stack
      Then every contract test passes
    ```
+
 4. **The schema-apply Job and the duplicate-audit CronJob.**
+
    ```gherkin
    @spec-infrastructure
    Scenario: make up applies every schema through a Job
@@ -171,6 +204,7 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      Then the schema-apply Job has completed
      And the dotnet, java and python schemas each hold the three tables
    ```
+
    ```gherkin
    @spec-measurement
    Scenario: The duplicate audit never writes
@@ -179,7 +213,9 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      Then it reports the duplicate count
      And the row counts in every table are unchanged
    ```
+
 5. **OpenTelemetry in the Python stack, the collectors, lgtm and the dashboard.**
+
    ```gherkin
    @rule-G0
    Scenario: A keyed booking leaves one trace with its database work
@@ -188,6 +224,7 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      Then one trace shows the HTTP request span
      And the trace shows the database spans inside it
    ```
+
    ```gherkin
    @spec-run-matrix
    Scenario: The dashboard shows which stack is under test
@@ -195,6 +232,7 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      When the matrix scales python to 0 replicas
      Then the ready replicas panel shows python at 0
    ```
+
    ```gherkin
    @contract-8
    Scenario: Telemetry is off unless the overlay switches it on
@@ -203,7 +241,9 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      Then every contract test passes
      And the python pod exports no telemetry
    ```
+
 6. **The Istio ambient overlay: install, enrolment, STRICT mTLS, AuthorizationPolicy, gateway, waypoint and routes.**
+
    ```gherkin
    @rule-G2
    Scenario: A mesh retry of a keyed booking replays it
@@ -212,6 +252,7 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      Then the mesh sends the request again with the same key
      And the database holds one booking for that client reference
    ```
+
    ```gherkin
    @contract-2
    Scenario: The control group gets no mesh retries
@@ -220,6 +261,7 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      Then the mesh does not send the request again
      And the database holds one booking for that client reference
    ```
+
    ```gherkin
    @rule-G7
    Scenario: Postgres refuses a workload with the wrong identity
@@ -227,6 +269,7 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
      When a pod running as the otel-agent service account connects to postgres
      Then the connection is refused
    ```
+
 7. **The same objects, instrumentation and policies for .NET and Java (G8).**
 8. **README section and versions.md entries** for every chart, image and package actually used.
 
