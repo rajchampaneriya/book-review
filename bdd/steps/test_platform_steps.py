@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pytest_bdd import given, parsers, scenario, then, when
 
-from drivers import PlatformCluster, StackTelemetry
+from drivers import LoadPlan, ObserveLoad, PlatformCluster, StackTelemetry
 
 FEATURES = Path(__file__).resolve().parents[1] / "features"
 
@@ -167,3 +167,104 @@ def ready_replicas_zero(cluster):
 @then(parsers.parse("the {stack} pod exports no telemetry"))
 def exports_no_telemetry(cluster, stack):
     assert cluster.exports_nothing()
+
+
+# ---------------------------------------------- platform_observe_load ---
+OBSERVE_LOAD = str(FEATURES / "platform_observe_load.feature")
+
+
+@scenario(OBSERVE_LOAD, "The load sends a fixed mix of new, replayed, conflicting and naive bookings")
+def test_load_mix_is_fixed():
+    pass
+
+
+@scenario(OBSERVE_LOAD, "A short load fills the request, error and latency panels for every stack")
+def test_load_fills_application_panels():
+    pass
+
+
+@scenario(OBSERVE_LOAD, "The outcome counters rise by exactly what the load sent")
+def test_outcome_counters_match_the_load():
+    pass
+
+
+@scenario(OBSERVE_LOAD, "The load skips a stack the matrix scaled to 0")
+def test_load_skips_a_scaled_down_stack():
+    pass
+
+
+@given(parsers.parse("an observe-load run of {minutes:d} minutes"), target_fixture="plan")
+def observe_load_run(minutes):
+    return LoadPlan(minutes)
+
+
+@when("the load is planned for one stack")
+def plan_for_one_stack(plan):
+    plan.plan()
+
+
+@then(parsers.parse("it sends {created:d} new keyed bookings and {replayed:d} replays of them"))
+def sends_keyed(plan, created, replayed):
+    assert plan.counts("created", "replayed") == (created, replayed), plan.planned
+
+
+@then(parsers.parse("it sends {conflict:d} conflicting bookings and {missing:d} bookings without a key"))
+def sends_rejected(plan, conflict, missing):
+    assert plan.counts("conflict", "missing_key") == (conflict, missing), plan.planned
+
+
+@then(parsers.parse("it sends {naive:d} naive bookings"))
+def sends_naive(plan, naive):
+    assert plan.counts("naive") == (naive,), plan.planned
+
+
+@given("the observability overlay is on for every stack", target_fixture="cluster")
+def overlay_on_for_every_stack():
+    cluster = ObserveLoad()
+    cluster.ensure_every_stack_on()
+    return cluster
+
+
+@given("the outcome counters have settled")
+def outcome_counters_settled(cluster):
+    cluster.settle_outcome_counters()
+
+
+@given("the matrix has scaled python to 0 replicas")
+def python_scaled_to_zero(request, cluster):
+    cluster.scale_to_zero_and_wait(request.addfinalizer)
+
+
+@when(parsers.parse("the operator runs observe-load for {seconds:d} seconds"))
+def run_observe_load(cluster, seconds):
+    cluster.run_load(seconds)
+
+
+@then("the requests panel shows keyed and naive bookings for every stack")
+def requests_panel_filled(cluster):
+    assert cluster.requests_panel_missing() == []
+
+
+@then("the errors panel shows conflicts and missing keys for every stack")
+def errors_panel_filled(cluster):
+    assert cluster.errors_panel_missing() == []
+
+
+@then("the latency panel shows a p95 for every stack")
+def latency_panel_filled(cluster):
+    assert cluster.latency_p95_missing() == []
+
+
+@then("every stack's created, replayed and conflict counters rose by what the load sent")
+def counters_match_the_load(cluster):
+    assert cluster.outcome_increases() == cluster.sent_outcomes()
+
+
+@then("the load reports python as skipped")
+def python_skipped(cluster):
+    assert cluster.skipped_stacks() == ["python"], cluster.results
+
+
+@then("java and dotnet answered every booking the load sent")
+def java_and_dotnet_answered(cluster):
+    assert cluster.answered_everything(["java", "dotnet"]), cluster.results

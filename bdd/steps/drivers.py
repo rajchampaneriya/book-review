@@ -428,3 +428,136 @@ class StackTelemetry(PlatformCluster):
         time.sleep(self.QUIET_SECONDS)
         return not self._traces_since('{resource.service.name="%s"}' % self.stack)
 
+
+
+class LoadPlan:
+    """The fixed mix make observe-load sends, read from harness/observe_load.py
+    without a cluster."""
+
+    def __init__(self, minutes: float) -> None:
+        self.minutes = minutes
+        self.planned: dict[str, int] = {}
+
+    def plan(self) -> None:
+        from harness import observe_load
+        self.planned = dict(observe_load.planned_counts(observe_load.ticks_for(self.minutes)))
+
+    def counts(self, *kinds: str) -> tuple[int, ...]:
+        return tuple(self.planned.get(kind, 0) for kind in kinds)
+
+
+class ObserveLoad(StackTelemetry):
+    """Drives make observe-load (harness/observe_load.py) against every stack and
+    reads the dashboard back with the panels' own queries, as
+    ready_replicas_on_panel does, so a broken panel query fails here too."""
+
+    # Grafana picks $__rate_interval per panel; two minutes covers a 90-second
+    # load plus the 15 s metric export and the collectors' batching.
+    RATE_INTERVAL = "2m"
+    # Longer than the 15 s metric export interval set by observe-up.sh: two
+    # equal readings this far apart mean nothing is still on its way.
+    COUNTER_SETTLE_SECONDS = 20
+    OUTCOMES = ("created", "replayed", "conflict")
+
+    def __init__(self, stack: str = "python") -> None:
+        super().__init__(stack)
+        self.results: dict = {}
+        self.counters_before: dict[tuple[str, str], float] = {}
+
+    # -- set-up and the load --------------------------------------------------
+    def ensure_every_stack_on(self) -> None:
+        for stack in STACKS:
+            StackTelemetry(stack).ensure_telemetry_on()
+
+    def scale_to_zero_and_wait(self, at_teardown) -> None:
+        """The matrix's scale-down, then wait until the NodePort stops answering
+        (scale.sh returns before the pod has gone)."""
+        self.scale_to_zero(at_teardown)
+        deadline = time.time() + self.WAIT_SECONDS
+        while time.time() < deadline:
+            try:
+                httpx.get(f"{self.BASE_URLS[self.stack]}/health", timeout=3.0)
+            except httpx.HTTPError:
+                return
+            time.sleep(2)
+        raise AssertionError(f"{self.stack} still answers /health after scaling to 0")
+
+    def run_load(self, seconds: int) -> None:
+        from harness import observe_load
+        self.results = observe_load.run(STACKS, seconds / 60)
+
+    # -- what the load reported -----------------------------------------------
+    def skipped_stacks(self) -> list[str]:
+        return sorted(stack for stack, result in self.results.items() if result.skipped)
+
+    def answered_everything(self, stacks: list[str]) -> bool:
+        return all(not self.results[s].skipped and self.results[s].ok and self.results[s].answered["created"] > 0
+                   for s in stacks)
+
+    def sent_outcomes(self) -> dict[str, dict[str, int]]:
+        return {stack: {outcome: result.answered[outcome] for outcome in self.OUTCOMES}
+                for stack, result in self.results.items()}
+
+    # -- the outcome counters -------------------------------------------------
+    def _outcome_counters(self) -> dict[tuple[str, str], float]:
+        rows = self._prometheus("sum by (service_name, outcome) (booking_outcomes_total)")
+        return {(r["metric"].get("service_name", ""), r["metric"].get("outcome", "")): float(r["value"][1])
+                for r in rows}
+
+    def settle_outcome_counters(self) -> None:
+        before = self._outcome_counters()
+        deadline = time.time() + self.WAIT_SECONDS
+        while time.time() < deadline:
+            time.sleep(self.COUNTER_SETTLE_SECONDS)
+            now = self._outcome_counters()
+            if now == before:
+                break
+            before = now
+        self.counters_before = before
+
+    def outcome_increases(self) -> dict[str, dict[str, int]]:
+        """Polls until every stack's counters rose by what the load sent, or the
+        wait runs out; returns the increases either way."""
+        expected = self.sent_outcomes()
+        deadline = time.time() + self.WAIT_SECONDS
+        while True:
+            now = self._outcome_counters()
+            increases = {stack: {o: round(now.get((stack, o), 0.0) - self.counters_before.get((stack, o), 0.0))
+                                 for o in self.OUTCOMES}
+                         for stack in expected}
+            if increases == expected or time.time() > deadline:
+                return increases
+            time.sleep(5)
+
+    # -- the dashboard's panels -----------------------------------------------
+    def _panel_expr(self, title_prefix: str, expr_prefix: str = "") -> str:
+        dashboard = json.loads(self.DASHBOARD.read_text(encoding="utf-8"))
+        panel = next(p for p in dashboard["panels"] if p["title"].startswith(title_prefix))
+        expr = next(t["expr"] for t in panel["targets"] if t["expr"].startswith(expr_prefix))
+        return expr.replace("$__rate_interval", self.RATE_INTERVAL)
+
+    def _missing_from_panel(self, expr: str, wanted: list[dict[str, str]]) -> list[dict[str, str]]:
+        """Polls the panel's query until every wanted series shows a positive
+        value; returns the ones still missing."""
+        deadline = time.time() + self.WAIT_SECONDS
+        while True:
+            shown = [r["metric"] for r in self._prometheus(expr) if float(r["value"][1]) > 0]
+            missing = [w for w in wanted if not any(all(m.get(k) == v for k, v in w.items()) for m in shown)]
+            if not missing or time.time() > deadline:
+                return missing
+            time.sleep(5)
+
+    def requests_panel_missing(self) -> list[dict[str, str]]:
+        return self._missing_from_panel(
+            self._panel_expr("Requests per second by stack and route"),
+            [{"service_name": s, "http_route": r} for s in STACKS for r in ("/v2/bookings", "/naive/bookings")])
+
+    def errors_panel_missing(self) -> list[dict[str, str]]:
+        return self._missing_from_panel(
+            self._panel_expr("4xx and 5xx responses per second"),
+            [{"service_name": s, "http_response_status_code": c} for s in STACKS for c in ("422", "400")])
+
+    def latency_p95_missing(self) -> list[dict[str, str]]:
+        return self._missing_from_panel(
+            self._panel_expr("Latency p50 / p95 / p99 per stack", "histogram_quantile(0.95"),
+            [{"service_name": s} for s in STACKS])
