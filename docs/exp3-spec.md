@@ -198,7 +198,9 @@ named after the stack, with the local-development credentials from `infra/k8s/po
 - k3d cluster `wcf-physics` (k3s inside Docker or Podman), one server node, defined in
   `infra/k3d/cluster.yaml`. Host ports 8081-8083 map to NodePorts 30081-30083 (dotnet, java, python)
   and host port 55432 maps to NodePort 30432 (Postgres).
-- Postgres: the current major version (verify the image tag), one pod, disposable storage, credentials
+- Postgres: the current major version (verify the image tag), one pod, data on a PVC (1Gi,
+  the k3s local-path StorageClass) so pod restarts keep the schemas while deleting the cluster
+  still deletes everything, credentials
   in a Secret labelled as local-development defaults. `infra/scripts/apply-schema.sh` renders
   `db/schema.sql` once per stack schema.
 - The contract tests and the harness reach Postgres at `localhost:55432` from the host. Nothing needs a

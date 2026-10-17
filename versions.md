@@ -76,6 +76,10 @@ platform-thread pool (spec: virtual threads belong to post 2).
 
 - Postgres 18+ requires the volume mounted at `/var/lib/postgresql` (not
   `.../data`); the manifest mounts the parent directory.
+- Postgres data lives on the PVC `postgres-data` (1Gi, the k3s `local-path`
+  StorageClass), so pod restarts keep the stack schemas; deleting the cluster
+  still deletes everything. This replaces the spec's original "disposable
+  storage" (spec text reconciled 2026-10-17 after a restart wiped the schemas).
 - The measured-run fault toggle is `kubectl set env` on the stack Deployment
   (on before k6, restored after), because the deployments must default to
   `FAULT_INJECTION` unset for contract test 8.
