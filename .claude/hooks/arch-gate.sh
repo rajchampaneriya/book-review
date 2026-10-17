@@ -7,7 +7,7 @@ set -uo pipefail
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
-out=$(cd "$PROJECT_DIR" && python3 -B tools/arch/check_hexagonal.py --all 2>&1)
+out=$(cd "$PROJECT_DIR" && .venv/bin/python -B tools/arch/check_hexagonal.py --all 2>&1)
 status=$?
 
 if [ $status -eq 0 ]; then
