@@ -16,6 +16,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: java
+        wcf-physics.io/identity: java
     spec:
       containers:
         - name: java

@@ -64,6 +64,98 @@ spec:
         - protocol: TCP
           port: 4317
 ---
+# java: same arrows as python.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-java
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: java
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-agent
+      ports:
+        - protocol: TCP
+          port: 4317
+---
+# dotnet: same arrows as python.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dotnet
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: dotnet
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-agent
+      ports:
+        - protocol: TCP
+          port: 4317
+---
 # schema-job: DNS and postgres out.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -145,6 +237,12 @@ spec:
         - podSelector:
             matchLabels:
               wcf-physics.io/identity: python
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: java
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: dotnet
         - podSelector:
             matchLabels:
               wcf-physics.io/identity: schema-job
