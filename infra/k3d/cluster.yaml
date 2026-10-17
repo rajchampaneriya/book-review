@@ -3,11 +3,19 @@
 # host 55432 maps to NodePort 30432 (Postgres). The overlay ports 8090
 # (Istio ingress gateway, plan step 6) and 8091 (Grafana in otel-lgtm,
 # plan step 5) are mapped up front so both overlays need no second recreate.
+# Traefik is disabled (platform plan D1): the Istio ingress gateway owns
+# ingress when the mesh overlay is installed.
 apiVersion: k3d.io/v1alpha5
 kind: Simple
 metadata:
   name: wcf-physics
 servers: 1
+options:
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
 ports:
   - port: 8081:30081
     nodeFilters:

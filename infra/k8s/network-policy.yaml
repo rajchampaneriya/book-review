@@ -35,6 +35,21 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    # Mesh overlay: in-mesh traffic arrives from the node's ztunnel on
+    # the HBONE port (and plain from it on 8080); ztunnel probes the
+    # workload from 169.254.7.127.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 15008
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
   egress:
     - to:
         - podSelector:
@@ -63,6 +78,14 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
+    # Mesh overlay: outbound HBONE to the node's ztunnel.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
 ---
 # java: same arrows as python.
 apiVersion: networking.k8s.io/v1
@@ -82,6 +105,21 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    # Mesh overlay: in-mesh traffic arrives from the node's ztunnel on
+    # the HBONE port (and plain from it on 8080); ztunnel probes the
+    # workload from 169.254.7.127.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 15008
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
   egress:
     - to:
         - podSelector:
@@ -109,6 +147,14 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
+    # Mesh overlay: outbound HBONE to the node's ztunnel.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
 ---
 # dotnet: same arrows as python.
 apiVersion: networking.k8s.io/v1
@@ -128,6 +174,21 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    # Mesh overlay: in-mesh traffic arrives from the node's ztunnel on
+    # the HBONE port (and plain from it on 8080); ztunnel probes the
+    # workload from 169.254.7.127.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 15008
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
   egress:
     - to:
         - podSelector:
@@ -155,6 +216,14 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
+    # Mesh overlay: outbound HBONE to the node's ztunnel.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
 ---
 # schema-job: DNS and postgres out.
 apiVersion: networking.k8s.io/v1
@@ -254,6 +323,20 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    # Mesh overlay: in-mesh traffic reaches postgres from the node's
+    # ztunnel, plain on 5432 and HBONE on 15008.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 15008
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
 ---
 # otel-agent: the node's kube-apiserver (k3s runs it on the node, not in
 # a pod) and kubelet, DNS, and the lgtm collector port.
@@ -364,3 +447,89 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+---
+# host-gateway-istio (the Gateway API provisioned deployment, mesh
+# overlay only): DNS, the stacks, and outbound HBONE to the ztunnel.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: gateway
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: python
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: java
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: dotnet
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# waypoint (mesh overlay only, L7 policy on the python Service): DNS,
+# python, and outbound HBONE to the ztunnel.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-waypoint
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      istio.io/dataplane-mode: waypoint
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: python
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

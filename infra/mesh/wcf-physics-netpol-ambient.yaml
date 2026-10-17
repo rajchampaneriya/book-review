@@ -1,0 +1,162 @@
+# Additive NetworkPolicies so wcf-physics keeps working after it joins Istio ambient.
+#
+# NetworkPolicies are unions, so these only ADD allowances. Your existing
+# default-deny and allow-* policies stay exactly as they are.
+#
+# Rule used throughout: for every in-namespace pod-to-pod hop you already allow
+# on an app port, also allow TCP 15008 (HBONE). Allow it on the caller's egress
+# and on the callee's ingress, with the same pod selectors.
+# Hops to things outside the mesh (kube-dns, node IPs 172.23.0.0/16) are unchanged.
+#
+# Apply BEFORE labeling the namespace:
+#   kubectl apply -f wcf-physics-netpol-ambient.yaml
+# Rollback:
+#   kubectl delete -f wcf-physics-netpol-ambient.yaml
+---
+# Kubelet probes: in ambient they arrive from 169.254.7.127, not the node IP.
+# On a dual-stack cluster, also allow fd16:9254:7127:1337:ffff:ffff:ffff:ffff/128.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-health-probes
+  namespace: wcf-physics
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
+---
+# db clients -> postgres (pairs with allow-postgres and the clients' 5432 egress)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-db-clients-egress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchExpressions:
+      - key: wcf-physics.io/identity
+        operator: In
+        values: [python, java, dotnet, schema-job, duplicate-audit]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-postgres-ingress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: wcf-physics.io/identity
+                operator: In
+                values: [python, java, dotnet, schema-job, duplicate-audit]
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+# apps -> otel-agent (pairs with the apps' 4317 egress)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-apps-to-otel-agent-egress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchExpressions:
+      - key: wcf-physics.io/identity
+        operator: In
+        values: [python, java, dotnet]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-agent
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+# NOTE: no existing policy allows ingress to otel-agent at all. Under default-deny,
+# apps -> otel-agent:4317 is blocked today, unless otel-agent runs with hostNetwork.
+# Applying this policy makes that hop work once the namespace is in the mesh.
+# Delete this policy if that hop is meant to stay closed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-otel-agent-ingress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: otel-agent
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: wcf-physics.io/identity
+                operator: In
+                values: [python, java, dotnet]
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+# otel-agent / otel-cluster -> lgtm (pairs with allow-lgtm and the collectors' 4317 egress)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-collectors-to-lgtm-egress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchExpressions:
+      - key: wcf-physics.io/identity
+        operator: In
+        values: [otel-agent, otel-cluster]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: lgtm
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-lgtm-ingress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: lgtm
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: wcf-physics.io/identity
+                operator: In
+                values: [otel-agent, otel-cluster]
+      ports:
+        - port: 15008
+          protocol: TCP

@@ -21,3 +21,5 @@ venv/
 # author-local, never committed
 .claude/settings.local.json
 CLAUDE.local.md
+
+istio-1.31.2/
