@@ -149,21 +149,29 @@ else:
         {"otel-agent-read", "otel-cluster-read"} <= crb_names,
     )
 
-# Absent object types in wcf-physics
-for kind in ("job", "cronjob", "daemonset"):
+# Absent object types in wcf-physics. The observability overlay is opt-in,
+# so its otel-agent DaemonSet may or may not be present; nothing else may be.
+for kind in ("job", "cronjob"):
     r = get_json("get", kind, "-n", NS)
     items = (r or {}).get("items", [])
     check(f"no {kind} in wcf-physics", not items, f"count={len(items)}")
+ds = get_json("get", "daemonset", "-n", NS)
+ds_names = sorted(i["metadata"]["name"] for i in (ds or {}).get("items", []))
+check(
+    "only the overlay's otel-agent DaemonSet may exist in wcf-physics",
+    set(ds_names) <= {"otel-agent"},
+    ",".join(ds_names),
+)
 
 # NetworkPolicy since step 3
 np = get_json("get", "networkpolicy", "-n", NS)
 np_names = sorted(i["metadata"]["name"] for i in (np or {}).get("items", []))
 check(
-    "the five planned NetworkPolicies exist in wcf-physics",
-    np_names == [
+    "the five core NetworkPolicies exist in wcf-physics",
+    set([
         "allow-duplicate-audit", "allow-postgres", "allow-python",
         "allow-schema-job", "default-deny",
-    ],
+    ]) <= set(np_names),
     ",".join(np_names),
 )
 r = get_json("get", "networkpolicy", "-A")

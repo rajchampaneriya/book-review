@@ -151,3 +151,113 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+---
+# otel-agent: the node's kube-apiserver (k3s runs it on the node, not in
+# a pod) and kubelet, DNS, and the lgtm collector port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otel-agent
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-agent
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 6443
+        - protocol: TCP
+          port: 10250
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: lgtm
+      ports:
+        - protocol: TCP
+          port: 4317
+---
+# otel-cluster: the API server, DNS, and the lgtm collector port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otel-cluster
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-cluster
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 6443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: lgtm
+      ports:
+        - protocol: TCP
+          port: 4317
+---
+# lgtm: the collectors in on OTLP, the host in on Grafana (NodePort 30091).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-lgtm
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lgtm
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-agent
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-cluster
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - from:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 3000

@@ -1,9 +1,10 @@
 # Platform plan: Kubernetes objects, Istio and OpenTelemetry
 
-Status: **steps 2 (identities, Secret reference, securityContext) and 3 (NetworkPolicy) applied on
-2026-10-17; step 4 (schema-apply Job and duplicate-audit CronJob) is next.** Steps 5 and 6
-(OpenTelemetry, Istio) are not built yet. The diagrams are in
-`docs/review/platform-istio-otel.drawio` (six pages, with a PNG preview of each page next to it).
+Status: **steps 2 (identities, Secret reference, securityContext), 3 (NetworkPolicy) and the
+infrastructure half of step 5 (collectors, lgtm, provisioned dashboard — `make observe-up`) applied
+on 2026-10-17; step 4 (schema-apply Job and duplicate-audit CronJob) is next.** Step 5's app half
+(OpenTelemetry packages in the Python stack) and step 6 (Istio) are not built yet. The diagrams are
+in `docs/review/platform-istio-otel.drawio` (six pages, with a PNG preview of each page next to it).
 
 The plan starts with the Python stack. .NET and Java follow the same pattern afterwards, because rule G8 needs the
 same behaviour in every stack.
@@ -11,9 +12,10 @@ same behaviour in every stack.
 ## 1. What the cluster has today
 
 Validated against the live cluster on 2026-10-17 (`k3d-wcf-physics`, k3s v1.36.4+k3s1, one arm64
-server node), after plan step 2 was applied: `python3 docs/review/istio/validate_cluster_state.py`
-runs 23 checks, one per claim below, and all pass. Run it again after any change to the cluster or
-these manifests.
+server node), after plan steps 2, 3 and the observability overlay were applied:
+`python3 docs/review/istio/validate_cluster_state.py` runs 23 checks, one per claim below, and all
+pass (with the overlay installed; the overlay-only rows below say what changes when it is off).
+Run it again after any change to the cluster or these manifests.
 
 | Object | Today | Evidence |
 | --- | --- | --- |
@@ -23,13 +25,13 @@ these manifests.
 | Secret | yes: `postgres-local`, Opaque, 3 keys, local-development defaults | `infra/k8s/postgres.yaml` |
 | Secret use | yes since step 2: the python Deployment composes `DATABASE_URL` from `secretKeyRef`s; no literal password in the manifest | `infra/k8s/python.yaml` |
 | ServiceAccount, RBAC | yes since step 2: python runs as the `python` service account with no API token mounted; six workload accounts and the `otel-agent-read` and `otel-cluster-read` ClusterRoles exist | `infra/k8s/rbac.yaml` |
-| NetworkPolicy | yes since step 3: `default-deny` plus `allow-python`, `allow-schema-job`, `allow-duplicate-audit`, `allow-postgres`; the host allowance is the docker subnet 172.23.0.0/16 | `infra/k8s/network-policy.yaml` |
+| NetworkPolicy | yes since step 3: `default-deny` plus `allow-python`, `allow-schema-job`, `allow-duplicate-audit`, `allow-postgres`; the host allowance is the docker subnet 172.23.0.0/16. The overlay adds `allow-otel-agent`, `allow-otel-cluster` and `allow-lgtm` when it is installed | `infra/k8s/network-policy.yaml` |
 | Job | no app Job (only k3s's own completed `helm-install-traefik` Jobs in kube-system); schemas are applied with `kubectl exec` from the host | `infra/scripts/apply-schema.sh:10` |
 | CronJob | no | `infra/k8s/` |
-| DaemonSet | no app DaemonSet (k3s runs its `svclb-traefik` DaemonSet in kube-system) | `infra/k8s/` |
+| DaemonSet | only the overlay's `otel-agent` (node collector), and only while the observability overlay is installed; no app DaemonSet (k3s runs its `svclb-traefik` DaemonSet in kube-system) | `infra/observability/otel-agent.yaml` |
 | Traefik | **yes:** k3s deployed Traefik (Deployment, LoadBalancer Service, svclb DaemonSet in kube-system). `infra/k3d/cluster.yaml` sets no `--disable=traefik`, so section 3.2's assumption needs the cluster recreated | live cluster; `infra/k3d/cluster.yaml` |
 | Istio, access policy | no: no `istio-system` namespace, no Istio CRDs | `infra/` |
-| OpenTelemetry, dashboard | no: no `opentelemetry` package in the stack | `stacks/python/pyproject.toml:6-10` |
+| OpenTelemetry, dashboard | infra yes since step 5's first half: `otel-agent` (DaemonSet), `otel-cluster` (Deployment) and `lgtm` (Grafana on host 8091, NodePort 30091) run when `make observe-up` installs the overlay, and the provisioned `wcf-physics overview` dashboard queries live cluster metrics; the stack itself still ships no `opentelemetry` package, so measured runs export nothing | `infra/observability/`; `stacks/python/pyproject.toml:6-10` |
 | Liveness probe | no | `infra/k8s/python.yaml` |
 | securityContext | yes since step 2: non-root (uid/gid 1000), `runAsNonRoot`, seccomp `RuntimeDefault`, `allowPrivilegeEscalation: false`, capabilities dropped | `infra/k8s/python.yaml` |
 

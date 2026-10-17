@@ -4,13 +4,16 @@ VARIANT ?= naive
 FAULT ?= 0.05
 RUN ?= 1
 
-.PHONY: doctor up down deploy unit arch contract bdd exp3 exp3-all summary chart
+.PHONY: doctor up down deploy unit arch contract bdd exp3 exp3-all summary chart observe-up
 
 doctor:
 	bash infra/scripts/doctor.sh
 
 up:
 	bash infra/scripts/up.sh
+
+observe-up:
+	bash infra/scripts/observe-up.sh
 
 down:
 	bash infra/scripts/down.sh
