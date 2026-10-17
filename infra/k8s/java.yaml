@@ -37,6 +37,10 @@ spec:
               value: java
             - name: STACK
               value: java
+            # Telemetry off for the measured matrix (decision D2); make
+            # observe-up switches it on with the OTEL_* settings.
+            - name: OTEL_SDK_DISABLED
+              value: "true"
             - name: DB_POOL_SIZE
               value: "10"
           readinessProbe:

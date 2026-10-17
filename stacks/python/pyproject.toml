@@ -7,6 +7,14 @@ dependencies = [
     "fastapi==0.143.0",
     "uvicorn==0.54.0",
     "asyncpg==0.32.0",
+    # OpenTelemetry SDK: imported only when the observability overlay switches it
+    # on (bootstrap/telemetry.py). FastAPI instruments itself through the API it
+    # already depends on, so no FastAPI instrumentation package is needed.
+    # Versions checked on PyPI 2026-10-17.
+    "opentelemetry-api==1.45.1",
+    "opentelemetry-sdk==1.45.1",
+    "opentelemetry-exporter-otlp-proto-grpc==1.45.1",
+    "opentelemetry-instrumentation-asyncpg==0.66b1",
 ]
 
 [project.optional-dependencies]

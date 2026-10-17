@@ -67,6 +67,34 @@ spec:
           configMap:
             name: otel-agent-conf
 ---
+# The stacks send OTLP here (step 5): OTEL_EXPORTER_OTLP_ENDPOINT is
+# http://otel-agent.wcf-physics.svc:4317 once make observe-up switches
+# telemetry on. One node today, so any agent pod is the local one.
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-agent
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: otel-agent
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  # The controller's label, not wcf-physics.io/identity: the BDD netprobes
+  # borrow identity labels and must not receive telemetry.
+  selector:
+    app.kubernetes.io/name: otel-agent
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+      appProtocol: grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+      appProtocol: http
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:

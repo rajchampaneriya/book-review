@@ -4,4 +4,10 @@
     <ProjectReference Include="..\Rajc.Bookings.Adapters.Inbound.Http\Rajc.Bookings.Adapters.Inbound.Http.csproj" />
     <ProjectReference Include="..\Rajc.Bookings.Adapters.Outbound.Postgres\Rajc.Bookings.Adapters.Outbound.Postgres.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- registered only when the observability overlay switches telemetry on -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+  </ItemGroup>
 </Project>

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pytest_bdd import given, parsers, scenario, then, when
 
-from drivers import PlatformCluster
+from drivers import PlatformCluster, StackTelemetry
 
 FEATURES = Path(__file__).resolve().parents[1] / "features"
 
@@ -74,11 +74,96 @@ def connection_result(cluster, result):
     assert cluster.connection_accepted is (result == "accepted")
 
 
-@when("the contract tests run against the python stack")
-def run_contracts(cluster):
-    cluster.contracts_passed = cluster.run_contract_tests("python")
+@when(parsers.parse("the contract tests run against the {stack} stack"))
+def run_contracts(cluster, stack):
+    cluster.contracts_passed = cluster.run_contract_tests(stack)
 
 
 @then("every contract test passes")
 def contracts_passed(cluster):
     assert cluster.contracts_passed is True
+
+
+# ------------------------------------------- platform_observability ---
+OBSERVABILITY = str(FEATURES / "platform_observability.feature")
+
+
+@scenario(OBSERVABILITY, "A keyed booking leaves one trace with its database work")
+def test_keyed_booking_leaves_one_trace():
+    pass
+
+
+@scenario(OBSERVABILITY, "The dashboard counts a replayed booking as a replay")
+def test_dashboard_counts_a_replay():
+    pass
+
+
+@scenario(OBSERVABILITY, "The dashboard shows which stack is under test")
+def test_dashboard_shows_stack_under_test():
+    pass
+
+
+@scenario(OBSERVABILITY, "Telemetry is off unless the overlay switches it on")
+def test_telemetry_off_by_default():
+    pass
+
+
+@given(parsers.parse("the observability overlay is on for the {stack} stack"), target_fixture="cluster")
+def overlay_on_for_stack(stack):
+    cluster = StackTelemetry(stack)
+    cluster.ensure_telemetry_on()
+    return cluster
+
+
+@given("the observability overlay is on", target_fixture="cluster")
+def overlay_on():
+    cluster = StackTelemetry("python")
+    assert cluster.overlay_installed()
+    return cluster
+
+
+@given(parsers.parse("the {stack} Deployment from infra/k8s/{manifest}.yaml"), target_fixture="cluster")
+def stack_as_make_up_applies_it(request, stack, manifest):
+    cluster = StackTelemetry(stack)
+    cluster.apply_stack_manifest(request.addfinalizer)
+    return cluster
+
+
+@when(parsers.parse("a client books a session with an idempotency key on the {stack} stack"))
+def book_with_key(cluster, stack):
+    cluster.book_and_find_trace()
+
+
+@when(parsers.parse("a client sends the same keyed booking twice on the {stack} stack"))
+def book_twice(cluster, stack):
+    cluster.book_twice()
+
+
+@when("the matrix scales python to 0 replicas")
+def scale_python_to_zero(request, cluster):
+    cluster.scale_to_zero(request.addfinalizer)
+
+
+@then("one trace shows the HTTP request span")
+def one_server_span(cluster):
+    assert len(cluster.server_spans()) == 1, cluster.trace_spans
+
+
+@then("the trace shows the database spans inside it")
+def database_spans_inside(cluster):
+    assert cluster.database_spans_inside_request(), cluster.trace_spans
+
+
+@then(parsers.parse("the outcome counter shows one more {outcome} booking"))
+def one_more_outcome(cluster, outcome):
+    assert cluster.wait_for_outcome_increase(outcome) == 1
+
+
+@then("the ready replicas panel shows python at 0")
+def ready_replicas_zero(cluster):
+    assert cluster.ready_replicas_on_panel() == 0
+
+
+@then(parsers.parse("the {stack} pod exports no telemetry"))
+def exports_no_telemetry(cluster, stack):
+    assert cluster.exports_nothing()

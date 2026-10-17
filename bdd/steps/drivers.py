@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import json
 import os
 import subprocess
 import sys
+import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+import httpx
 
 from booking.application.ports.inbound import BookSessionCommand
 from booking.application.ports.outbound import StoredKey
@@ -228,3 +233,198 @@ class PlatformCluster:
             capture_output=True, text=True, check=True,
         )
         return "secrets/kubernetes.io/serviceaccount" in out.stdout
+
+
+class StackTelemetry(PlatformCluster):
+    """Drives the observability overlay for the step 5 scenarios.
+
+    Switches a stack's telemetry the way the repo does (make observe-up turns it
+    on, infra/k8s/<stack>.yaml turns it off), books through the stack's NodePort
+    like the contract tests, and reads traces and metrics back from lgtm through
+    Grafana's data source proxy on localhost:8091.
+    """
+
+    REPO = Path(__file__).resolve().parents[2]
+    GRAFANA = "http://localhost:8091"
+    BASE_URLS = {"dotnet": "http://localhost:8081", "java": "http://localhost:8082",
+                 "python": "http://localhost:8083"}
+    # Spans leave the stacks every 5 s and metrics every 15 s (observe-up.sh);
+    # the collectors batch on top. Wait well past both before giving up.
+    WAIT_SECONDS = 120
+    # How long a stack with telemetry off must stay silent in Tempo.
+    QUIET_SECONDS = 30
+    DASHBOARD = REPO / "infra" / "observability" / "dashboards" / "wcf-physics-overview.json"
+
+    def __init__(self, stack: str = "python") -> None:
+        super().__init__()
+        self.stack = stack
+        self.since_ns = 0
+        self.trace_spans: list[dict] = []
+        self.outcomes_before: dict[str, float] = {}
+
+    # -- overlay state --------------------------------------------------------
+    def overlay_installed(self) -> bool:
+        out = subprocess.run(
+            ["kubectl", "get", "deploy", "lgtm", "-n", self.NS, "-o",
+             "jsonpath={.status.availableReplicas}"],
+            capture_output=True, text=True, check=False)
+        return out.returncode == 0 and out.stdout.strip() not in ("", "0")
+
+    def telemetry_setting(self) -> str:
+        out = subprocess.run(
+            ["kubectl", "get", "deploy", self.stack, "-n", self.NS, "-o",
+             "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='OTEL_SDK_DISABLED')].value}"],
+            capture_output=True, text=True, check=True)
+        return out.stdout.strip()
+
+    def ensure_telemetry_on(self) -> None:
+        """make observe-up's switch, run only when this stack's telemetry is off."""
+        assert self.overlay_installed(), "lgtm is not running: run make observe-up first"
+        if self.telemetry_setting() != "false":
+            subprocess.run(["bash", "infra/scripts/observe-up.sh"], cwd=self.REPO,
+                           check=True, capture_output=True)
+        self._rollout()
+
+    def apply_stack_manifest(self, at_teardown) -> None:
+        """The Deployment exactly as make up applies it: telemetry off. If the
+        overlay had it on, make observe-up switches it back on at teardown."""
+        if self.overlay_installed() and self.telemetry_setting() == "false":
+            at_teardown(lambda: subprocess.run(["bash", "infra/scripts/observe-up.sh"],
+                                               cwd=self.REPO, check=True, capture_output=True))
+        subprocess.run(["kubectl", "apply", "-f", f"infra/k8s/{self.stack}.yaml"],
+                       cwd=self.REPO, check=True, capture_output=True)
+        self._rollout()
+        self.since_ns = time.time_ns()
+
+    def _rollout(self) -> None:
+        subprocess.run(["kubectl", "rollout", "status", f"deploy/{self.stack}", "-n", self.NS,
+                        "--timeout=180s"], check=True, capture_output=True)
+
+    # -- actions ------------------------------------------------------------
+    def book_and_find_trace(self) -> None:
+        assert self.book_with_key() == [201]
+        self.wait_for_booking_trace()
+
+    def book_twice(self) -> None:
+        self.record_outcomes()
+        assert self.book_with_key(times=2) == [201, 201]
+
+    def book_with_key(self, times: int = 1) -> list[int]:
+        key = f"otel-{self.stack}-{uuid.uuid4().hex[:12]}"
+        body = {"client_ref": key, "session_id": "s-42", "dog_id": "d-7", "owner_id": "o-9",
+                "deposit_cents": 2500}
+        self.since_ns = time.time_ns()
+        with httpx.Client(base_url=self.BASE_URLS[self.stack], timeout=10.0) as client:
+            return [client.post("/v2/bookings", json=body, headers={"Idempotency-Key": key}).status_code
+                    for _ in range(times)]
+
+    def scale_to_zero(self, at_teardown) -> None:
+        """What the matrix does to a stack that is not under test; one replica
+        again at teardown."""
+        at_teardown(self._restore_one_replica)
+        self._scale(0)
+
+    def _scale(self, replicas: int) -> None:
+        subprocess.run(["bash", "infra/scripts/scale.sh", self.stack, str(replicas)],
+                       cwd=self.REPO, check=True, capture_output=True)
+
+    def _restore_one_replica(self) -> None:
+        self._scale(1)
+        self._rollout()
+
+    # -- reads from lgtm ----------------------------------------------------
+    def _grafana(self, path: str, **params) -> dict:
+        response = httpx.get(f"{self.GRAFANA}{path}", params=params, timeout=10.0)
+        response.raise_for_status()
+        return response.json()
+
+    def _traces_since(self, traceql: str) -> list[dict]:
+        found = self._grafana("/api/datasources/proxy/uid/tempo/api/search", q=traceql, limit=20,
+                              start=self.since_ns // 1_000_000_000 - 5, end=int(time.time()) + 5)
+        # two seconds of slack for clock skew between the host and the k3d node
+        return [t for t in found.get("traces", [])
+                if int(t["startTimeUnixNano"]) >= self.since_ns - 2_000_000_000]
+
+    def wait_for_booking_trace(self) -> None:
+        query = '{resource.service.name="%s" && span.http.route="/v2/bookings"}' % self.stack
+        deadline = time.time() + self.WAIT_SECONDS
+        while time.time() < deadline:
+            traces = self._traces_since(query)
+            if traces:
+                self.trace_spans = self._spans(self._grafana(
+                    f"/api/datasources/proxy/uid/tempo/api/traces/{traces[0]['traceID']}"))
+                return
+            time.sleep(5)
+        self.trace_spans = []
+
+    @staticmethod
+    def _spans(trace: dict) -> list[dict]:
+        spans = []
+        for batch in trace.get("batches") or trace.get("resourceSpans") or []:
+            for scope in batch.get("scopeSpans") or batch.get("instrumentationLibrarySpans") or []:
+                for span in scope.get("spans", []):
+                    attrs = {a["key"]: next(iter(a["value"].values()), None) for a in span.get("attributes", [])}
+                    spans.append({"name": span["name"], "kind": str(span.get("kind", "")),
+                                  "start": int(span["startTimeUnixNano"]), "end": int(span["endTimeUnixNano"]),
+                                  "attributes": attrs})
+        return spans
+
+    def server_spans(self) -> list[dict]:
+        return [s for s in self.trace_spans
+                if "SERVER" in s["kind"] and s["attributes"].get("http.route") == "/v2/bookings"]
+
+    def database_spans_inside_request(self) -> list[dict]:
+        server = self.server_spans()
+        if len(server) != 1:
+            return []
+        start, end = server[0]["start"], server[0]["end"]
+        return [s for s in self.trace_spans
+                if "postgresql" in (s["attributes"].get("db.system"), s["attributes"].get("db.system.name"))
+                and start <= s["start"] and s["end"] <= end]
+
+    def _prometheus(self, expr: str) -> list[dict]:
+        found = self._grafana("/api/datasources/proxy/uid/prometheus/api/v1/query", query=expr)
+        return found["data"]["result"]
+
+    def outcome_total(self, outcome: str) -> float:
+        result = self._prometheus(
+            'sum(booking_outcomes_total{service_name="%s", outcome="%s"})' % (self.stack, outcome))
+        return float(result[0]["value"][1]) if result else 0.0
+
+    def record_outcomes(self) -> None:
+        self.outcomes_before = {o: self.outcome_total(o) for o in ("created", "replayed")}
+
+    def wait_for_outcome_increase(self, outcome: str) -> float:
+        deadline = time.time() + self.WAIT_SECONDS
+        increase = 0.0
+        while time.time() < deadline:
+            increase = self.outcome_total(outcome) - self.outcomes_before.get(outcome, 0.0)
+            if increase >= 1:
+                return increase
+            time.sleep(5)
+        return increase
+
+    def ready_replicas_on_panel(self) -> float | None:
+        """Runs the dashboard's own ready-replicas query and reads this stack's series."""
+        dashboard = json.loads(self.DASHBOARD.read_text(encoding="utf-8"))
+        panel = next(p for p in dashboard["panels"] if p["title"].startswith("Ready replicas"))
+        expr = panel["targets"][0]["expr"]
+        deadline = time.time() + self.WAIT_SECONDS
+        value = None
+        while time.time() < deadline:
+            series = [r for r in self._prometheus(expr)
+                      if r["metric"].get("k8s_deployment_name") == self.stack]
+            value = float(series[0]["value"][1]) if series else None
+            if value == 0:
+                return value
+            time.sleep(5)
+        return value
+
+    def exports_nothing(self) -> bool:
+        if self.telemetry_setting() != "true":
+            return False
+        if not self.overlay_installed():
+            return True
+        time.sleep(self.QUIET_SECONDS)
+        return not self._traces_since('{resource.service.name="%s"}' % self.stack)
+

@@ -1,10 +1,20 @@
 // POST /v2/bookings: the idempotency-keyed endpoint. The route validates the
 // Idempotency-Key header, calls the driving port, maps the outcome to a status
-// code (Created/Replayed 201, Conflict 422, InFlight 409) and then runs the
-// fault hook. All policy lives in the application layer; only transport here.
+// code (Created/Replayed 201, Conflict 422, InFlight 409), counts the outcome
+// and then runs the fault hook. All policy lives in the application layer; only
+// transport here.
+//
+// The outcome counter (booking.outcomes, attribute outcome = created, replayed,
+// conflict or in_flight) goes through the OpenTelemetry API. It is a no-op
+// unless the observability overlay attaches the OpenTelemetry Java agent, which
+// supplies the global instance, so the measured matrix is unaffected.
 
 package work.rajc.booking.adapter.in.http;
 
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.LongCounter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,12 +28,20 @@ import work.rajc.booking.application.port.in.BookingOutcome;
 @RestController
 public class BookingController {
 
+    private static final AttributeKey<String> OUTCOME = AttributeKey.stringKey("outcome");
+
     private final BookSessionIdempotentUseCase useCase;
     private final FaultHook faultHook;
+    private final LongCounter outcomes;
 
     public BookingController(BookSessionIdempotentUseCase useCase, FaultHook faultHook) {
         this.useCase = useCase;
         this.faultHook = faultHook;
+        this.outcomes = GlobalOpenTelemetry.getMeter("work.rajc.booking.adapter.in.http")
+                .counterBuilder("booking.outcomes")
+                .setUnit("{booking}")
+                .setDescription("POST /v2/bookings outcomes: created, replayed, conflict, in_flight")
+                .build();
     }
 
     @PostMapping("/v2/bookings")
@@ -35,6 +53,7 @@ public class BookingController {
             return error(HttpStatus.BAD_REQUEST, "idempotency_key_required", null);
         }
         BookingOutcome outcome = useCase.book(key, NaiveBookingController.toCommand(booking));
+        outcomes.add(1, Attributes.of(OUTCOME, outcomeName(outcome)));
         faultHook.afterCommit(request);
 
         return switch (outcome) {
@@ -45,6 +64,15 @@ public class BookingController {
                     .body(toResponse(replayed.confirmation()));
             case BookingOutcome.Created created -> ResponseEntity.status(HttpStatus.CREATED)
                     .body(toResponse(created.confirmation()));
+        };
+    }
+
+    static String outcomeName(BookingOutcome outcome) {
+        return switch (outcome) {
+            case BookingOutcome.Created ignored -> "created";
+            case BookingOutcome.Replayed ignored -> "replayed";
+            case BookingOutcome.Conflict ignored -> "conflict";
+            case BookingOutcome.InFlight ignored -> "in_flight";
         };
     }
 

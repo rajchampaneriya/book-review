@@ -2,8 +2,10 @@
 
 Status: **steps 2 (identities, Secret reference, securityContext), 3 (NetworkPolicy) and the
 infrastructure half of step 5 (collectors, lgtm, provisioned dashboard — `make observe-up`) applied
-on 2026-10-17; step 4 (schema-apply Job and duplicate-audit CronJob) is next.** Step 5's app half
-(OpenTelemetry packages in the Python stack) and step 6 (Istio) are not built yet. The diagrams are
+on 2026-10-17; step 4 (schema-apply Job and duplicate-audit CronJob) is next.** Step 5's app half is
+coded for all three stacks (the author brought .NET and Java forward from step 7 on 2026-10-17) and
+waits for `make unit`, `make arch`, `make contract` and `make bdd` on the cluster; step 6 (Istio) is
+in progress on `istio-addition`. The diagrams are
 in `docs/review/platform-istio-otel.drawio` (six pages, with a PNG preview of each page next to it).
 
 The plan starts with the Python stack. .NET and Java follow the same pattern afterwards, because rule G8 needs the
@@ -114,6 +116,15 @@ first. D4 and D5 follow the recommendation unless the author says otherwise.
   `OTEL_*` environment variables). An outcome counter (created, replayed, conflict, in-flight) lives in the inbound
   HTTP adapter, where outcomes are already mapped to status codes. The domain and application layers stay unchanged;
   `check_hexagonal.py` already rejects any non-standard-library import there.
+- **As built (2026-10-17):** FastAPI 0.143 instruments itself through the global providers (server
+  spans, operation spans, `http.server.request.duration`), so the Python stack needs no
+  `opentelemetry-instrumentation-fastapi`; `bootstrap/telemetry.py` sets the providers, instruments
+  asyncpg and builds the outcome counter, and imports no SDK unless `OTEL_SDK_DISABLED=false`. Java
+  ships the OpenTelemetry Java agent in the runtime image, loaded only through `JAVA_TOOL_OPTIONS`;
+  .NET registers OpenTelemetry in `ServiceRegistration` only when switched on, with Npgsql's built-in
+  `Npgsql` ActivitySource for the database spans. Every stack counts `booking.outcomes{outcome}` in
+  its inbound HTTP adapter, and the naive endpoint is untouched (its bookings show through the HTTP
+  metrics). The stacks export OTLP to the new `otel-agent` Service.
 - **Off by default:** the Deployment sets `OTEL_SDK_DISABLED=true`, and the overlay switches it on. The measured
   matrix and contract test 8 see the same service as today.
 - **Collectors:** the `otel-agent` DaemonSet and the `otel-cluster` Deployment from section 3.1 send OTLP to `lgtm`.
@@ -296,6 +307,10 @@ Each step is one pull request. The scenarios follow the repository's BDD standar
 | OpenTelemetry Collector contrib | v0.163.0 is the newest release listed | [newreleases.io](https://newreleases.io/project/github/open-telemetry/opentelemetry-collector-contrib/release/v0.154.0) |
 | k8sattributes processor | v1.0.0 (stable), announced 2026-09-16 | [opentelemetry.io blog](https://opentelemetry.io/blog/2026/k8s-attributes-processor-v1/) |
 | grafana/otel-lgtm | for development, demos and testing; ships a Kubernetes manifest | [Grafana docs](https://grafana.com/docs/opentelemetry/docker-lgtm.md) |
+| opentelemetry-api, -sdk, -exporter-otlp-proto-grpc, -instrumentation-asyncpg | 1.45.1 and 0.66b1 re-checked 2026-10-17; FastAPI 0.143.0 itself requires opentelemetry-api>=1.44.0 | PyPI JSON API |
+| OpenTelemetry Java agent | 2.32.0 (2026-10-03); its instrumentation BOM imports opentelemetry-bom 1.66.0, and Spring Boot 4.1.1 manages opentelemetry-api 1.62.0 for the app, which the agent bridges | Maven Central metadata |
+| maven-dependency-plugin | 3.11.0 (fetches the agent jar in the Java build stage) | Maven Central metadata |
+| OpenTelemetry .NET: Extensions.Hosting, Exporter.OpenTelemetryProtocol, Instrumentation.AspNetCore | 1.20.0, each with a net10.0 target | NuGet flat container API |
 | k3s NetworkPolicy | enforced by default (embedded kube-router controller) | [docs.k3s.io](https://docs.k3s.io/networking/networking-services) |
 
 Not verified from this session: container image tags (Docker Hub was unreachable) and the Gateway API CRD

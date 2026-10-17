@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 using Rajc.Bookings.Adapters.Inbound.Http;
 using Rajc.Bookings.Adapters.Outbound.Postgres;
 using Rajc.Bookings.Application.Ports.Inbound;
@@ -39,7 +41,30 @@ public static class ServiceRegistration
         {
             options.SerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
         });
+        AddTelemetryWhenEnabled(services, configuration);
         return services;
+    }
+
+    // Off unless the observability overlay sets OTEL_SDK_DISABLED=false (platform
+    // plan section 3.3, decision D2): the measured matrix registers no
+    // OpenTelemetry at all. The OTLP endpoint and the service name come from the
+    // standard OTEL_* variables. Readiness probes on /health are not traced.
+    private static void AddTelemetryWhenEnabled(IServiceCollection services, IConfiguration configuration)
+    {
+        if (!string.Equals(configuration["OTEL_SDK_DISABLED"], "false", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+        services.AddOpenTelemetry()
+            .WithTracing(tracing => tracing
+                .AddAspNetCoreInstrumentation(options =>
+                    options.Filter = context => !context.Request.Path.StartsWithSegments("/health"))
+                .AddSource("Npgsql") // Npgsql's built-in ActivitySource: one span per command
+                .AddOtlpExporter())
+            .WithMetrics(metrics => metrics
+                .AddAspNetCoreInstrumentation()
+                .AddMeter(BookingEndpoints.MeterName)
+                .AddOtlpExporter());
     }
 
     // Npgsql 10's NpgsqlConnectionStringBuilder rejects URI-style connection
