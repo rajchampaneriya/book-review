@@ -26,6 +26,9 @@ kubectl rollout status deploy/otel-cluster -n wcf-physics --timeout=180s
 # Step 5: the stacks export traces and metrics to the node collector.
 # java: the OpenTelemetry agent ships in the image and loads only when
 # JAVA_TOOL_OPTIONS names it; its logs stay local, as in the other stacks.
+# One stack at a time: each rollout briefly runs a second 1Gi pod, and the
+# single k3d node has room for one such surge, not three (FailedScheduling:
+# Insufficient memory, 2026-10-17).
 otlp="http://otel-agent.wcf-physics.svc:4317"
 for stack in python java dotnet; do
   extra=()
@@ -38,8 +41,6 @@ for stack in python java dotnet; do
     OTEL_EXPORTER_OTLP_ENDPOINT="$otlp" OTEL_EXPORTER_OTLP_PROTOCOL=grpc \
     OTEL_METRIC_EXPORT_INTERVAL=15000 \
     ${extra[@]+"${extra[@]}"}  # bash 3.2 (macOS) and set -u safe
-done
-for stack in python java dotnet; do
   kubectl -n wcf-physics rollout status deploy/"$stack" --timeout=180s
 done
 echo "observe-up: Grafana on http://localhost:8091 (NodePort 30091)"

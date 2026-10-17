@@ -25,9 +25,14 @@ kubectl apply --server-side \
 
 echo "mesh-up: Istio ${ISTIO_VERSION} ambient profile (platform k3d)"
 # k3s keeps CNI binaries in its own data dir, not /opt/cni/bin.
+# istiod asks for 2Gi by default; on the one k3d node that request alone
+# left no room for a stack's rolling update (FailedScheduling: Insufficient
+# memory, 2026-10-17). It needs far less for one namespace.
 "$ISTIOCTL" install -y --set profile=ambient \
   --set values.global.platform=k3d \
-  --set values.cni.cniBinDir=/var/lib/rancher/k3s/data/cni
+  --set values.cni.cniBinDir=/var/lib/rancher/k3s/data/cni \
+  --set values.pilot.resources.requests.cpu=100m \
+  --set values.pilot.resources.requests.memory=256Mi
 kubectl wait --for=condition=available deploy/istiod -n istio-system --timeout=300s
 kubectl wait --for=condition=ready pod/-l app=ztunnel -n istio-system --timeout=300s
 
