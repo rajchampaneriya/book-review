@@ -216,6 +216,10 @@ named after the stack, with the local-development credentials from `infra/k8s/po
 - `make up` must work from a clean machine with only those prerequisites.
 - Podman: k3d needs the Podman socket and `DOCKER_HOST` set. If k3d fails on Podman on this machine,
   stop and report; do not switch to docker compose without approval.
+- The mesh and observability overlays are opt-in (`make mesh-up` and `make observe-up`) and always
+  off for measured runs. Each adds a k3d host-port mapping to `infra/k3d/cluster.yaml`: host 8090 to
+  NodePort 30090 for the Istio ingress gateway, and host 8091 to NodePort 30091 for Grafana. Adding
+  them means the cluster is recreated once.
 
 ## Architecture tests (`make arch STACK=<stack>`)
 

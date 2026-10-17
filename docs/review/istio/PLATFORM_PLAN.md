@@ -1,6 +1,8 @@
 # Platform plan: Kubernetes objects, Istio and OpenTelemetry
 
-Status: **decisions taken; waiting for the CLAUDE.md tree entries in section 4.** Nothing in this plan is built yet. The diagrams are in
+Status: **decisions taken; the CLAUDE.md and AGENTS.md tree entries, the two commands and the spec
+sentence were added on 2026-10-17. Step 2 (ServiceAccounts, RBAC, Secret reference, securityContext)
+is next.** None of the objects in section 3 is built yet. The diagrams are in
 `docs/review/platform-istio-otel.drawio` (six pages, with a PNG preview of each page next to it).
 
 The plan starts with the Python stack. .NET and Java follow the same pattern afterwards, because rule G8 needs the
@@ -151,6 +153,13 @@ stacks/python/src/booking/adapters/inbound/http/metrics.py     # outcome counter
 The commands table also needs `make mesh-up` and `make observe-up`. The spec's Infrastructure section needs one
 sentence saying that both overlays are opt-in and off for measured runs, plus the gateway and Grafana host ports from
 D4. That changes `infra/k3d/cluster.yaml`, so the cluster has to be recreated once.
+
+**Done on 2026-10-17:** the tree entries above are in CLAUDE.md and AGENTS.md (checker passes), the
+commands table has both commands, and the spec sentence names the ports: host 8090 -> NodePort 30090
+(Istio ingress gateway) and host 8091 -> NodePort 30091 (Grafana). `check_hexagonal.py --all
+--complete` now also expects these files to exist: the four `infra/k8s/` manifests, both overlay
+scripts, `telemetry.py` and `metrics.py`; they appear as the steps build them (README.md was already
+outstanding from P5).
 
 ## 5. Sequence and acceptance criteria
 
