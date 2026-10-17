@@ -2,6 +2,11 @@
 # section 3.1, arrows on page 5). Sources outside the cluster (k6, the
 # harness, the contract tests) reach pods through the k3d node, so the
 # host allowance is the docker network subnet 172.23.0.0/16.
+#
+# Policies select pods by wcf-physics.io/identity, not app.kubernetes.io/name:
+# the DaemonSet controller deletes bare pods that carry its selector, so the
+# BDD netprobes (which impersonate a workload to test its policy) need a
+# label the controllers do not fight over.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -21,7 +26,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: python
+      wcf-physics.io/identity: python
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
@@ -34,7 +39,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: postgres
+              wcf-physics.io/identity: postgres
       ports:
         - protocol: TCP
           port: 5432
@@ -54,7 +59,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: otel-agent
+              wcf-physics.io/identity: otel-agent
       ports:
         - protocol: TCP
           port: 4317
@@ -68,13 +73,13 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: schema-job
+      wcf-physics.io/identity: schema-job
   policyTypes: [Egress]
   egress:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: postgres
+              wcf-physics.io/identity: postgres
       ports:
         - protocol: TCP
           port: 5432
@@ -100,13 +105,13 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: duplicate-audit
+      wcf-physics.io/identity: duplicate-audit
   policyTypes: [Egress]
   egress:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: postgres
+              wcf-physics.io/identity: postgres
       ports:
         - protocol: TCP
           port: 5432
@@ -133,19 +138,19 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: postgres
+      wcf-physics.io/identity: postgres
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: python
+              wcf-physics.io/identity: python
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: schema-job
+              wcf-physics.io/identity: schema-job
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: duplicate-audit
+              wcf-physics.io/identity: duplicate-audit
         - ipBlock:
             cidr: 172.23.0.0/16
       ports:
@@ -162,7 +167,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: otel-agent
+      wcf-physics.io/identity: otel-agent
   policyTypes: [Egress]
   egress:
     - to:
@@ -188,7 +193,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: lgtm
+              wcf-physics.io/identity: lgtm
       ports:
         - protocol: TCP
           port: 4317
@@ -202,7 +207,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: otel-cluster
+      wcf-physics.io/identity: otel-cluster
   policyTypes: [Egress]
   egress:
     - to:
@@ -226,7 +231,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: lgtm
+              wcf-physics.io/identity: lgtm
       ports:
         - protocol: TCP
           port: 4317
@@ -240,16 +245,16 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: lgtm
+      wcf-physics.io/identity: lgtm
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: otel-agent
+              wcf-physics.io/identity: otel-agent
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: otel-cluster
+              wcf-physics.io/identity: otel-cluster
       ports:
         - protocol: TCP
           port: 4317

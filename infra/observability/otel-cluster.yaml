@@ -18,6 +18,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: otel-cluster
+        wcf-physics.io/identity: otel-cluster
     spec:
       serviceAccountName: otel-cluster
       securityContext:

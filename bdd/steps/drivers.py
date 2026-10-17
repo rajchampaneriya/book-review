@@ -178,7 +178,7 @@ class PlatformCluster:
                        capture_output=True, check=False)
         subprocess.run(
             ["kubectl", "run", pod, "-n", self.NS, "--image=postgres:18.6",
-             "--restart=Never", f"--labels=app.kubernetes.io/name={client}",
+             "--restart=Never", f"--labels=wcf-physics.io/identity={client}",
              "--command", "--", "sh", "-c",
              f"sleep {self.SETTLE_SECONDS}; pg_isready -h postgres -p 5432 -t 5"],
             check=True, capture_output=True)

@@ -16,6 +16,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: python
+        wcf-physics.io/identity: python
     spec:
       serviceAccountName: python
       automountServiceAccountToken: false

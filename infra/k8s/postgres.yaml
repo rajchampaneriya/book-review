@@ -33,6 +33,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: postgres
+        wcf-physics.io/identity: postgres
     spec:
       containers:
         - name: postgres
