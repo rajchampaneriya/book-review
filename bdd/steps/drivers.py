@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import os
 import subprocess
 import sys
 from contextlib import asynccontextmanager
@@ -153,9 +154,55 @@ class PlatformCluster:
     """Reads the live k3d cluster through kubectl for the platform scenarios."""
 
     NS = "wcf-physics"
+    # kube-router takes a few seconds to sync policy rules for a brand-new
+    # pod; a probe that connects immediately is denied by lag, not by policy.
+    SETTLE_SECONDS = 5
 
     def __init__(self) -> None:
         self.last_permission: bool | None = None
+        self.connection_accepted: bool | None = None
+        self.contracts_passed: bool | None = None
+
+    def default_deny_applied(self) -> bool:
+        out = subprocess.run(
+            ["kubectl", "get", "networkpolicy", "default-deny", "-n", self.NS],
+            capture_output=True, text=True, check=False,
+        )
+        return out.returncode == 0
+
+    def reaches_postgres(self, client: str) -> bool:
+        """Runs a throwaway pod labelled as <client> and reports whether it
+        can open a TCP connection to postgres on 5432."""
+        pod = f"netprobe-{client}"
+        subprocess.run(["kubectl", "delete", "pod", pod, "-n", self.NS],
+                       capture_output=True, check=False)
+        subprocess.run(
+            ["kubectl", "run", pod, "-n", self.NS, "--image=postgres:18.6",
+             "--restart=Never", f"--labels=app.kubernetes.io/name={client}",
+             "--command", "--", "sh", "-c",
+             f"sleep {self.SETTLE_SECONDS}; pg_isready -h postgres -p 5432 -t 5"],
+            check=True, capture_output=True)
+        subprocess.run(
+            ["kubectl", "wait", "--for=jsonpath={.status.phase}=Succeeded",
+             f"pod/{pod}", "-n", self.NS, "--timeout=90s"],
+            capture_output=True, check=False)
+        out = subprocess.run(
+            ["kubectl", "get", "pod", pod, "-n", self.NS, "-o",
+             "jsonpath={.status.containerStatuses[0].state.terminated.exitCode}"],
+            capture_output=True, text=True, check=True)
+        subprocess.run(["kubectl", "delete", "pod", pod, "-n", self.NS],
+                       capture_output=True, check=False)
+        return out.stdout.strip() == "0"
+
+    def run_contract_tests(self, stack: str) -> bool:
+        repo = Path(__file__).resolve().parents[2]
+        env = {**os.environ, "STACK": stack}
+        out = subprocess.run(
+            [sys.executable, "-m", "pytest", "-c", "contracts/pytest.ini",
+             "contracts/tests"],
+            capture_output=True, text=True, cwd=repo, env=env, check=False,
+        )
+        return out.returncode == 0
 
     def deployment_service_account(self, deployment: str) -> str:
         out = subprocess.run(

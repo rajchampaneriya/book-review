@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import given, parsers, scenario, then, when
 
 from drivers import PlatformCluster
 
@@ -42,3 +42,43 @@ def permission_denied(cluster):
 @then("the pod has no API token mounted")
 def no_api_token(cluster):
     assert cluster.api_token_mounted() is False
+
+
+# ------------------------------------------- platform_network_policy ---
+@scenario(str(FEATURES / "platform_network_policy.feature"),
+          "Only permitted connections reach the booking database")
+def test_only_permitted_connections():
+    pass
+
+
+@scenario(str(FEATURES / "platform_network_policy.feature"),
+          "The host still reaches the python stack through its NodePort")
+def test_host_still_reaches_python():
+    pass
+
+
+@given("default-deny NetworkPolicy is applied in wcf-physics", target_fixture="cluster")
+def default_deny_applied():
+    cluster = PlatformCluster()
+    assert cluster.default_deny_applied()
+    return cluster
+
+
+@when(parsers.parse("{client} opens a connection to postgres on port 5432"))
+def open_connection(cluster, client):
+    cluster.connection_accepted = cluster.reaches_postgres(client)
+
+
+@then(parsers.parse("the connection is {result}"))
+def connection_result(cluster, result):
+    assert cluster.connection_accepted is (result == "accepted")
+
+
+@when("the contract tests run against the python stack")
+def run_contracts(cluster):
+    cluster.contracts_passed = cluster.run_contract_tests("python")
+
+
+@then("every contract test passes")
+def contracts_passed(cluster):
+    assert cluster.contracts_passed is True

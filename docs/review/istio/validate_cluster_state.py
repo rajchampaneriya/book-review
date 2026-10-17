@@ -150,20 +150,28 @@ else:
     )
 
 # Absent object types in wcf-physics
-for kind in ("networkpolicy", "job", "cronjob", "daemonset"):
+for kind in ("job", "cronjob", "daemonset"):
     r = get_json("get", kind, "-n", NS)
     items = (r or {}).get("items", [])
-    if kind == "job":
-        # ignore completed helm-install system jobs if ever listed here
-        items = items
     check(f"no {kind} in wcf-physics", not items, f"count={len(items)}")
 
-# No NetworkPolicy anywhere (k3s would enforce them out of the box)
-r = get_json("get", "networkpolicy", "-A")
+# NetworkPolicy since step 3
+np = get_json("get", "networkpolicy", "-n", NS)
+np_names = sorted(i["metadata"]["name"] for i in (np or {}).get("items", []))
 check(
-    "no NetworkPolicy cluster-wide",
-    not (r or {}).get("items"),
+    "the five planned NetworkPolicies exist in wcf-physics",
+    np_names == [
+        "allow-duplicate-audit", "allow-postgres", "allow-python",
+        "allow-schema-job", "default-deny",
+    ],
+    ",".join(np_names),
 )
+r = get_json("get", "networkpolicy", "-A")
+outside = [
+    i["metadata"]["name"] for i in (r or {}).get("items", [])
+    if i["metadata"]["namespace"] != NS
+]
+check("no NetworkPolicy outside wcf-physics", not outside, ",".join(outside))
 
 # Istio absent
 ns_list = get_json("get", "ns")

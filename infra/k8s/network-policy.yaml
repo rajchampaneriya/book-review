@@ -1,0 +1,153 @@
+# Default deny, then one allow per permitted connection (platform plan
+# section 3.1, arrows on page 5). Sources outside the cluster (k6, the
+# harness, the contract tests) reach pods through the k3d node, so the
+# host allowance is the docker network subnet 172.23.0.0/16.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: wcf-physics
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# python: host (and later the gateway) in; postgres, DNS and the
+# collector out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-python
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: python
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # No collector pods yet (step 5); the rule is the planned arrow.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-agent
+      ports:
+        - protocol: TCP
+          port: 4317
+---
+# schema-job: DNS and postgres out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-schema-job
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: schema-job
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# duplicate-audit: DNS and postgres out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-duplicate-audit
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: duplicate-audit
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# postgres: the stack services, the Job, the audit and the host's
+# harness (NodePort 30432) in on 5432.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: python
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: schema-job
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: duplicate-audit
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 5432

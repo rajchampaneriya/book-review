@@ -1,7 +1,8 @@
 # Platform plan: Kubernetes objects, Istio and OpenTelemetry
 
-Status: **step 2 (ServiceAccounts, RBAC, Secret reference, securityContext) applied on 2026-10-17;
-step 3 (NetworkPolicy) is next.** Steps 5 and 6 (OpenTelemetry, Istio) are not built yet. The diagrams are in
+Status: **steps 2 (identities, Secret reference, securityContext) and 3 (NetworkPolicy) applied on
+2026-10-17; step 4 (schema-apply Job and duplicate-audit CronJob) is next.** Steps 5 and 6
+(OpenTelemetry, Istio) are not built yet. The diagrams are in
 `docs/review/platform-istio-otel.drawio` (six pages, with a PNG preview of each page next to it).
 
 The plan starts with the Python stack. .NET and Java follow the same pattern afterwards, because rule G8 needs the
@@ -22,7 +23,7 @@ these manifests.
 | Secret | yes: `postgres-local`, Opaque, 3 keys, local-development defaults | `infra/k8s/postgres.yaml` |
 | Secret use | yes since step 2: the python Deployment composes `DATABASE_URL` from `secretKeyRef`s; no literal password in the manifest | `infra/k8s/python.yaml` |
 | ServiceAccount, RBAC | yes since step 2: python runs as the `python` service account with no API token mounted; six workload accounts and the `otel-agent-read` and `otel-cluster-read` ClusterRoles exist | `infra/k8s/rbac.yaml` |
-| NetworkPolicy | none anywhere in the cluster; k3s would enforce one out of the box (embedded kube-router controller) | `infra/k8s/` |
+| NetworkPolicy | yes since step 3: `default-deny` plus `allow-python`, `allow-schema-job`, `allow-duplicate-audit`, `allow-postgres`; the host allowance is the docker subnet 172.23.0.0/16 | `infra/k8s/network-policy.yaml` |
 | Job | no app Job (only k3s's own completed `helm-install-traefik` Jobs in kube-system); schemas are applied with `kubectl exec` from the host | `infra/scripts/apply-schema.sh:10` |
 | CronJob | no | `infra/k8s/` |
 | DaemonSet | no app DaemonSet (k3s runs its `svclb-traefik` DaemonSet in kube-system) | `infra/k8s/` |
