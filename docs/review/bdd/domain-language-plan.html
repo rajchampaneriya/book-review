@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BDD Domain Language — Python Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #22303C;
+    --ink-soft: #55677A;
+    --blue: #1F4E79;
+    --blue-mid: #3E77A8;
+    --blue-soft: #9DB9D5;
+    --blue-faint: #EAF1F8;
+    --line: #D3E0EC;
+    --card: #FFFFFF;
+    --bg: #F4F8FC;
+    --leak: #B45309;
+    --ok: #2E7D5B;
+    --radius: 14px;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "IBM Plex Sans", -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    padding-bottom: 80px;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- header ---------- */
+  header {
+    background: linear-gradient(180deg, #1F4E79 0%, #2A5D8C 100%);
+    color: #fff;
+    padding: 40px 0 34px;
+  }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--blue-soft); font-weight: 600;
+  }
+  header h1 { font-size: 30px; font-weight: 700; margin: 6px 0 4px; letter-spacing: -0.01em; }
+  header .sub { font-size: 14.5px; color: #D8E5F1; max-width: 720px; }
+  header .sub code { font-family: var(--mono); font-size: 13px; color: #BFD6EA; }
+  .head-flex { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+  .head-flex .txt { flex: 1 1 480px; }
+  .donut-box { display: flex; align-items: center; gap: 16px; }
+  .donut-label { font-size: 13px; color: #D8E5F1; }
+  .donut-label b { display: block; font-size: 20px; color: #fff; font-weight: 600; }
+  .reset {
+    margin-top: 8px; background: transparent; border: 1px solid var(--blue-soft);
+    color: #D8E5F1; font-family: inherit; font-size: 12px; padding: 4px 10px;
+    border-radius: 999px; cursor: pointer;
+  }
+  .reset:hover { background: rgba(255,255,255,0.12); }
+
+  /* ---------- section titles ---------- */
+  section { margin-top: 42px; }
+  .sec-title {
+    display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px;
+  }
+  .sec-title .num {
+    font-family: var(--mono); font-size: 13px; color: var(--blue-mid); font-weight: 500;
+  }
+  .sec-title h2 { font-size: 19px; font-weight: 600; color: var(--blue); }
+  .sec-title .hint { font-size: 13px; color: var(--ink-soft); }
+
+  /* ---------- first principles: the ladder ---------- */
+  .ladder { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 22px 24px;
+  }
+  .card h3 { font-size: 14px; font-weight: 600; color: var(--blue); margin-bottom: 12px; }
+  .rung {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 12px; border-radius: 10px; margin-bottom: 6px;
+    background: var(--blue-faint); border: 1px solid var(--line);
+  }
+  .rung .lvl {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    color: var(--blue-mid); width: 62px; flex-shrink: 0;
+  }
+  .rung .what { font-size: 13.5px; }
+  .rung .what small { display: block; color: var(--ink-soft); font-size: 12px; }
+  .rung.vocab-ok { border-left: 3px solid var(--blue-soft); }
+  .rung.vocab-no { border-left: 3px solid var(--blue); background: #FFF; }
+  .boundary {
+    display: flex; align-items: center; gap: 10px; margin: 10px 0;
+    color: var(--leak); font-size: 12.5px; font-weight: 600;
+  }
+  .boundary::before, .boundary::after {
+    content: ""; flex: 1; border-top: 2px dashed #E4B789;
+  }
+
+  /* number bond */
+  .bond { text-align: center; }
+  .bond svg { max-width: 100%; height: auto; }
+  .bond .note { font-size: 12.5px; color: var(--ink-soft); margin-top: 8px; }
+
+  /* ---------- before / after ---------- */
+  .compare { display: grid; grid-template-columns: 1fr 54px 1fr; gap: 0; align-items: stretch; }
+  .compare .arrow {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: var(--blue-mid); font-weight: 300;
+  }
+  .code-card { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; }
+  .code-card .tag {
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;
+    padding: 8px 16px;
+  }
+  .code-card.before .tag { background: #FBEFDD; color: var(--leak); }
+  .code-card.after .tag { background: #E3F0EA; color: var(--ok); }
+  pre {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+    padding: 14px 16px 18px; overflow-x: auto; flex: 1;
+  }
+  .code-card.before pre { background: #FFFDF9; color: #4A3A28; }
+  .code-card.after pre { background: #FAFDFB; color: #24435B; }
+  .leak-w { background: #F6E3C8; border-bottom: 2px solid var(--leak); border-radius: 2px; padding: 0 1px; }
+  .comment { color: #8CA3B8; font-style: italic; }
+  .kw { color: var(--blue); font-weight: 500; }
+
+  /* ---------- task boxes ---------- */
+  .box {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); margin-bottom: 18px; overflow: hidden;
+  }
+  .box-head {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 20px; background: var(--blue-faint);
+    border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  }
+  .box-head .ph {
+    font-family: var(--mono); font-size: 12px; font-weight: 500;
+    color: #fff; background: var(--blue); border-radius: 6px; padding: 3px 8px;
+  }
+  .box-head h3 { font-size: 15.5px; font-weight: 600; color: var(--blue); flex: 1 1 200px; }
+  .box-head .count { font-size: 12px; color: var(--ink-soft); font-family: var(--mono); }
+  .box-bar { flex-basis: 100%; height: 5px; background: #DDE8F2; border-radius: 999px; overflow: hidden; }
+  .box-bar i { display: block; height: 100%; width: 0%; background: var(--blue-mid); border-radius: 999px; transition: width 0.35s ease; }
+  .box.done .box-bar i { background: var(--ok); }
+
+  .task {
+    display: flex; gap: 14px; padding: 14px 20px;
+    border-bottom: 1px solid #EAF0F7; cursor: pointer; transition: background 0.15s;
+  }
+  .task:last-child { border-bottom: none; }
+  .task:hover { background: #F7FAFD; }
+  .task input { display: none; }
+  .tick {
+    width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--blue-soft);
+    flex-shrink: 0; margin-top: 2px; position: relative; transition: all 0.15s;
+  }
+  .task input:checked + .tick { background: var(--ok); border-color: var(--ok); }
+  .task input:checked + .tick::after {
+    content: ""; position: absolute; left: 6px; top: 2px; width: 6px; height: 11px;
+    border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(40deg);
+  }
+  .task .body { flex: 1; }
+  .task .t-title { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+  .task input:checked ~ .body .t-title { color: var(--ink-soft); text-decoration: line-through; text-decoration-color: var(--blue-soft); }
+  .task .why { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+  .chips { margin-top: 7px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; color: var(--blue);
+    background: var(--blue-faint); border: 1px solid var(--line);
+    border-radius: 5px; padding: 2px 7px;
+  }
+  .chip.warn { color: var(--leak); background: #FBEFDD; border-color: #EAD3AE; }
+
+  /* ---------- guardrails ---------- */
+  .guards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .guard {
+    background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--leak);
+    border-radius: 10px; padding: 12px 14px; font-size: 12.5px; color: var(--ink-soft);
+  }
+  .guard b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 2px; }
+
+  footer {
+    margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--ink-soft);
+  }
+  footer code { font-family: var(--mono); font-size: 11.5px; background: var(--blue-faint); padding: 1px 5px; border-radius: 4px; }
+
+  @media (max-width: 860px) {
+    .ladder, .compare { grid-template-columns: 1fr; }
+    .compare .arrow { transform: rotate(90deg); padding: 8px 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap head-flex">
+    <div class="txt">
+      <div class="eyebrow">Experiment 3 · BDD review · Python stack</div>
+      <h1>From HTTP noise to domain language</h1>
+      <p class="sub">
+        Review scorecard line: <em>“Domain language, declarative — ◐ titles are behavioural; bodies are
+        HTTP verbs, headers and SQL.”</em> The titles promise behaviour; the bodies whisper
+        <code>client.post("/v2/bookings", headers={"Idempotency-Key": …})</code>.
+        This plan closes that gap for the Python stack: the spec starts reading like a story,
+        and the transport plumbing moves one layer down, into drivers.
+      </p>
+    </div>
+    <div class="donut-box">
+      <svg width="96" height="96" viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="10"/>
+        <circle id="donutArc" cx="60" cy="60" r="52" fill="none" stroke="#9DB9D5" stroke-width="10"
+                stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"
+                transform="rotate(-90 60 60)" style="transition: stroke-dashoffset 0.4s ease;"/>
+      </svg>
+      <div class="donut-label">
+        <b id="pctLabel">0%</b>
+        <span id="doneLabel">0 of 13 done</span>
+        <button class="reset" id="resetBtn" title="Clear saved progress">reset</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ FIRST PRINCIPLES ============ -->
+  <section>
+    <div class="sec-title">
+      <span class="num">01</span>
+      <h2>First principles — the one idea</h2>
+      <span class="hint">everything below is this idea, repeated</span>
+    </div>
+    <div class="ladder">
+      <div class="card">
+        <h3>The translation ladder</h3>
+        <div class="rung vocab-ok">
+          <span class="lvl">feature</span>
+          <span class="what">Gherkin scenario <small>“the client retries the identical booking”</small></span>
+        </div>
+        <div class="rung vocab-ok">
+          <span class="lvl">step</span>
+          <span class="what">one sentence = one call <small><code>client.retry_identical()</code></small></span>
+        </div>
+        <div class="boundary">vocabulary boundary — HTTP, headers &amp; SQL live only below this line</div>
+        <div class="rung vocab-no">
+          <span class="lvl">driver</span>
+          <span class="what">the translator <small>httpx + psycopg, wrapped in domain verbs</small></span>
+        </div>
+        <div class="rung vocab-no">
+          <span class="lvl">repo code</span>
+          <span class="what">the service itself <small>FastAPI app, BookSessionIdempotentService</small></span>
+        </div>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:12px">
+          A reader above the line never needs to know what POST means. Everything below the line never
+          needs to know what the sentence says. Each layer has one job — that is why the plan is fixable in an afternoon.
+        </p>
+      </div>
+      <div class="card bond">
+        <h3>Decompose the problem (Greg Tang: break it into friendly pieces)</h3>
+        <svg viewBox="0 0 420 240" width="420">
+          <line x1="210" y1="78" x2="90"  y2="150" stroke="#9DB9D5" stroke-width="2"/>
+          <line x1="210" y1="78" x2="210" y2="150" stroke="#9DB9D5" stroke-width="2"/>
+          <line x1="210" y1="78" x2="330" y2="150" stroke="#9DB9D5" stroke-width="2"/>
+          <circle cx="210" cy="52" r="42" fill="#1F4E79"/>
+          <text x="210" y="47" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="600" font-family="IBM Plex Sans">readable</text>
+          <text x="210" y="63" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="600" font-family="IBM Plex Sans">spec</text>
+          <circle cx="90" cy="178" r="40" fill="#EAF1F8" stroke="#3E77A8" stroke-width="1.5"/>
+          <text x="90" y="170" text-anchor="middle" fill="#1F4E79" font-size="11" font-weight="600" font-family="IBM Plex Sans">say what</text>
+          <text x="90" y="184" text-anchor="middle" fill="#1F4E79" font-size="11" font-family="IBM Plex Sans">domain words</text>
+          <circle cx="210" cy="178" r="40" fill="#EAF1F8" stroke="#3E77A8" stroke-width="1.5"/>
+          <text x="210" y="170" text-anchor="middle" fill="#1F4E79" font-size="11" font-weight="600" font-family="IBM Plex Sans">hide how</text>
+          <text x="210" y="184" text-anchor="middle" fill="#1F4E79" font-size="11" font-family="IBM Plex Sans">driver does it</text>
+          <circle cx="330" cy="178" r="40" fill="#EAF1F8" stroke="#3E77A8" stroke-width="1.5"/>
+          <text x="330" y="170" text-anchor="middle" fill="#1F4E79" font-size="11" font-weight="600" font-family="IBM Plex Sans">see results</text>
+          <text x="330" y="184" text-anchor="middle" fill="#1F4E79" font-size="11" font-family="IBM Plex Sans">Ledger counts</text>
+        </svg>
+        <p class="note">
+          One hard problem (an imperative test) bonds into three easy ones. Each phase of the plan
+          below builds exactly one bond. No step asks two questions at once.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BEFORE / AFTER ============ -->
+  <section>
+    <div class="sec-title">
+      <span class="num">02</span>
+      <h2>See the change — one real example</h2>
+      <span class="hint">from contracts/tests/test_v2_bookings.py, today</span>
+    </div>
+    <div class="compare">
+      <div class="code-card before">
+        <div class="tag">before · imperative (the ◐)</div>
+        <pre>second = <span class="leak-w">client.post</span>("/v2/bookings",
+    json=body,
+    <span class="leak-w">headers</span>={"Idempotency-Key": "replay-1"})
+assert <span class="leak-w">second.status_code</span> == 201
+assert <span class="leak-w">second.headers.get</span>(
+    "Idempotent-Replayed") == "true"
+
+<span class="comment"># reader must know HTTP, headers and
+# pytest to understand one business rule</span></pre>
+      </div>
+      <div class="arrow">→</div>
+      <div class="code-card after">
+        <div class="tag">after · declarative (the ✔)</div>
+        <pre><span class="kw">When</span> the client retries the identical booking
+     with the same request key
+<span class="kw">Then</span> the client receives the original
+     confirmation marked as a replay
+
+<span class="comment"># the step behind "When" is one line:</span>
+<span class="kw">@when</span>("the client retries ...")
+<span class="kw">def</span> retry(client):
+    client.retry_identical()
+
+<span class="comment"># POST, headers, status codes: all inside the driver</span></pre>
+      </div>
+    </div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:10px">
+      Intuition check — the “leak test”: if a sentence in a step or scenario mentions
+      <code style="font-family:var(--mono)">POST</code>, a header name, a status code or SQL, transport vocabulary
+      has leaked above the boundary. Fix the leak, not the sentence.
+    </p>
+  </section>
+
+  <!-- ============ TASKS ============ -->
+  <section>
+    <div class="sec-title">
+      <span class="num">03</span>
+      <h2>The work — four boxes, thirteen steps</h2>
+      <span class="hint">click a task to tick it · progress saves in this browser</span>
+    </div>
+
+    <!-- BOX 0 -->
+    <div class="box" id="box-p0">
+      <div class="box-head">
+        <span class="ph">P0</span>
+        <h3>See the gap — read only, write nothing</h3>
+        <span class="count">0 / 2</span>
+        <div class="box-bar"><i></i></div>
+      </div>
+      <label class="task"><input type="checkbox" data-task="t01"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Catalogue the leaks</span>
+          <span class="why">Why first: you cannot remove a leak you have not seen. Read the two worst files and list every HTTP verb, header and SQL string that appears inside a test body.</span>
+          <span class="chips"><span class="chip">contracts/tests/test_v2_bookings.py</span><span class="chip">contracts/tests/test_validation.py</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t02"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Study the pattern that already passes</span>
+          <span class="why">The repo already does this right at the application level: every policy step is one call into a driver. Copy that shape; do not invent a new one.</span>
+          <span class="chips"><span class="chip">bdd/steps/test_policy_and_harness_steps.py</span><span class="chip">bdd/steps/drivers.py</span></span>
+        </span>
+      </label>
+    </div>
+
+    <!-- BOX 1 -->
+    <div class="box" id="box-p1">
+      <div class="box-head">
+        <span class="ph">P1</span>
+        <h3>Build the translators — the only new code</h3>
+        <span class="count">0 / 2</span>
+        <div class="box-bar"><i></i></div>
+      </div>
+      <label class="task"><input type="checkbox" data-task="t03"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Ledger driver — count by client reference</span>
+          <span class="why">A read model over psycopg that counts bookings, charges and stored keys for one client_ref. This kills the shared-TRUNCATE coupling (review finding B6): each scenario counts only its own rows, so scenarios become independent.</span>
+          <span class="chips"><span class="chip">bdd/steps/drivers.py</span><span class="chip">psycopg</span><span class="chip">no TRUNCATE, ever</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t04"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">BookingClient driver — domain verbs over httpx</span>
+          <span class="why">book_session, retry_identical, book_naive, send_malformed, with_fault_header. The driver mints a fresh uuid4 key and client_ref per scenario, so no scenario can touch another’s data. All POST/header vocabulary lives — and dies — here.</span>
+          <span class="chips"><span class="chip">bdd/steps/drivers.py</span><span class="chip">httpx</span><span class="chip">uuid4 per scenario</span></span>
+        </span>
+      </label>
+    </div>
+
+    <!-- BOX 2 -->
+    <div class="box" id="box-p2">
+      <div class="box-head">
+        <span class="ph">P2</span>
+        <h3>Write the sentences — thin steps, five features</h3>
+        <span class="count">0 / 5</span>
+        <div class="box-bar"><i></i></div>
+      </div>
+      <label class="task"><input type="checkbox" data-task="t05"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Health — calibrate on the easiest one</span>
+          <span class="why">One scenario, no database. Prove the step → driver → service path works end to end before touching the hard features. Small numbers first.</span>
+          <span class="chips"><span class="chip">exp3_service_health.feature</span><span class="chip">1 scenario</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t06"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Naive baseline — the control group</span>
+          <span class="why">Three scenarios where duplicates are the measurement itself. A “failing” naive endpoint is the point of the experiment — never fix it.</span>
+          <span class="chips"><span class="chip">exp3_naive_baseline.feature</span><span class="chip warn">do not fix the baseline</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t07"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Idempotent booking — the core</span>
+          <span class="why">Fresh key, replay, lost confirmation, conflict across all five hash fields (one Outline), 20 concurrent duplicates (asyncio.gather inside the driver), key rules (Outline), 255-char boundary. This is the experiment in one feature file.</span>
+          <span class="chips"><span class="chip">exp3_idempotent_booking.feature</span><span class="chip">7 scenarios</span><span class="chip">contract tests 3–6</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t08"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Validation — outlines carry the data</span>
+          <span class="why">Defect names (“an unknown extra field”) map to bodies inside the driver; steps stay one line. The @open-question rows are allowed to disagree across stacks — that discovery is rule G8 working, not failing.</span>
+          <span class="chips"><span class="chip">exp3_booking_request_validation.feature</span><span class="chip">Examples tables</span><span class="chip">@open-question</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t09"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Fault injection — timing, warmed up first</span>
+          <span class="why">Warm-up booking before any millisecond assertion (review B2: a cold JIT must not be able to fail a timing test). Then: hook off responds &lt; 500 ms; hook on holds ≥ 2000 ms and the booking exists before the confirmation arrives.</span>
+          <span class="chips"><span class="chip">exp3_fault_injection.feature</span><span class="chip">needs FAULT_INJECTION=enabled</span></span>
+        </span>
+      </label>
+    </div>
+
+    <!-- BOX 3 -->
+    <div class="box" id="box-p3">
+      <div class="box-head">
+        <span class="ph">P3</span>
+        <h3>Prove it — evidence, not claims</h3>
+        <span class="count">0 / 4</span>
+        <div class="box-bar"><i></i></div>
+      </div>
+      <label class="task"><input type="checkbox" data-task="t10"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Run green: make up, then make bdd</span>
+          <span class="why">HTTP steps need the k3d cluster with the Python stack deployed. @known-defect scenarios stay strict xfail. Show the output — rule H2: nothing “works” unrun.</span>
+          <span class="chips"><span class="chip">make up</span><span class="chip">make bdd</span><span class="chip">cluster required</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t11"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Gate passes</span>
+          <span class="why">The structure checker also enforces the BDD standards on every feature file. New step files are already legal under bdd/** — no CLAUDE.md or AGENTS.md tree change needed.</span>
+          <span class="chips"><span class="chip">python3 tools/arch/check_hexagonal.py --all</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t12"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Leak guard — prove the boundary held</span>
+          <span class="why">grep the new steps file for POST, headers=, SELECT, TRUNCATE, status_code — it must return nothing. One command turns the intuition into a check.</span>
+          <span class="chips"><span class="chip">grep -nE 'POST|headers=|SELECT|TRUNCATE|status_code' bdd/steps/</span></span>
+        </span>
+      </label>
+      <label class="task"><input type="checkbox" data-task="t13"><span class="tick"></span>
+        <span class="body">
+          <span class="t-title">Backlog, commits, pull request</span>
+          <span class="why">Update TASKS.md, small conventional commits, PR for review. Never push to main; the author merges.</span>
+          <span class="chips"><span class="chip">TASKS.md</span><span class="chip">branch + PR</span><span class="chip warn">never main</span></span>
+        </span>
+      </label>
+    </div>
+  </section>
+
+  <!-- ============ GUARDRAILS ============ -->
+  <section>
+    <div class="sec-title">
+      <span class="num">04</span>
+      <h2>Guardrails — what this plan must not do</h2>
+    </div>
+    <div class="guards">
+      <div class="guard"><b>Do not fix the naive baseline</b>Duplicates under retry are the measurement. A “fixed” control group destroys the experiment.</div>
+      <div class="guard"><b>No policy in steps</b>A step is one call into a driver. If a step grows an if-statement, the driver is missing a verb.</div>
+      <div class="guard"><b>Do not weaken checks</b>check_hexagonal and the architecture tests are protected. Fix code, never the check.</div>
+      <div class="guard"><b>Same behaviour, every stack</b>Rule G8: these steps describe behaviour common to all three stacks; only the Python driver is built now.</div>
+    </div>
+  </section>
+
+  <footer>
+    Files touched by this plan: <code>bdd/steps/drivers.py</code> · <code>bdd/steps/test_http_steps.py</code> (new) ·
+    <code>TASKS.md</code>. Both live under the optional <code>bdd/**</code> entry of the CLAUDE.md tree — no
+    AGENTS.md / CLAUDE.md update required. Review source: <code>docs/review/bdd/BDD_REVIEW.md</code> §2, line 24.
+  </footer>
+</main>
+
+<script>
+(function () {
+  var KEY = "bdd-domain-language-plan-v1";
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { saved = {}; }
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll(".box"));
+  var inputs = Array.prototype.slice.call(document.querySelectorAll("input[data-task]"));
+
+  function render() {
+    var total = inputs.length, done = 0;
+    inputs.forEach(function (inp) {
+      inp.checked = !!saved[inp.dataset.task];
+      if (inp.checked) done++;
+    });
+    boxes.forEach(function (box) {
+      var bi = Array.prototype.slice.call(box.querySelectorAll("input[data-task]"));
+      var bd = bi.filter(function (i) { return i.checked; }).length;
+      box.querySelector(".count").textContent = bd + " / " + bi.length;
+      box.querySelector(".box-bar i").style.width = (bi.length ? (100 * bd / bi.length) : 0) + "%";
+      box.classList.toggle("done", bd === bi.length && bi.length > 0);
+    });
+    var pct = total ? Math.round(100 * done / total) : 0;
+    document.getElementById("pctLabel").textContent = pct + "%";
+    document.getElementById("doneLabel").textContent = done + " of " + total + " done";
+    var C = 2 * Math.PI * 52;
+    document.getElementById("donutArc").style.strokeDashoffset = C * (1 - done / total);
+  }
+
+  inputs.forEach(function (inp) {
+    inp.addEventListener("change", function () {
+      saved[inp.dataset.task] = inp.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+      render();
+    });
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", function () {
+    saved = {};
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

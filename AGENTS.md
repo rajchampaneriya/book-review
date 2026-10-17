@@ -12,7 +12,9 @@ The spec below is the source of truth for behaviour; if you think it is wrong, s
 
 - You (Codex) write code, scripts, Kubernetes manifests, tests, READMEs and code comments.
 - You do not write article or blog prose, and you make no claims about the book. The author does.
-- The author reviews every change and pushes. Never push, never add a git remote, never publish.
+- Work on a branch and open a pull request for every change; never push to `main` directly. The
+  author reviews every change, and a pull request merges into `main` only when the author asks.
+  Never add a git remote, and never publish.
 
 ## Architecture: hexagonal (ports and adapters), identical in every stack
 
@@ -38,25 +40,35 @@ names ending in `/` are folders, and one folder line may hold several segments
 (stubs are fine while building) and nothing else. `*` matches within one name and `**` any path below
 its folder; entries marked `(optional)` may be absent, and so may everything under them. Ignored everywhere: `.git/`, `.venv/`, `venv/`,
 `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, `.import_linter_cache/`,
-`*.egg-info/`, `node_modules/`, `target/`, `bin/`, `obj/`, `TestResults/`, `.idea/`, `.vscode/`,
-`.DS_Store`. If you need a file that is not listed, stop and ask the author to add it here first.
+`*.egg-info/`, `node_modules/`, `target/`, `bin/`, `obj/`, `TestResults/`, `.idea/`,
+`.DS_Store`. Review notes, the task backlog and BDD specifications are not stack code: put them under
+the optional `TASKS.md`, `docs/review/` and `bdd/` entries without asking. For any other file that is
+not listed, stop and ask the author to add it here first. `AGENTS.md`, when present, carries this tree
+verbatim; the checker compares the two.
 Every service listens on port 8080 inside its container. Stack builds and tests run in containers,
 so the host needs no JDK, .NET SDK or Python 3.14.
 
 <!-- structure:begin -->
 ```text
-.gitignore                                # starter kit; build outputs, caches, .venv/, .Codex/settings.local.json, Codex.local.md
+.gitignore                                # starter kit; build outputs, caches, .venv/, .claude/settings.local.json, CLAUDE.local.md
 .gitattributes                            # starter kit; LF line endings everywhere
-AGENTS.md                                 # these instructions (protected)
-Codex.local.md                           # (optional) author's private notes, gitignored
+CLAUDE.md                                 # these instructions (protected)
+CLAUDE.local.md                           # (optional) author's private notes, gitignored
+AGENTS.md                                 # (optional) Codex instructions (same role as CLAUDE.md)
+.codex/                                   # (optional) Codex agent configuration (mirrors .claude/)
+  **                                      # config.toml, hooks.json, hooks/
 LICENSE                                   # MIT
 Makefile                                  # the commands below; ENGINE = docker or podman, detected
 README.md                                 # code README, written in P5
-requirements-host.txt                     # pinned host tools for .venv: pytest, httpx, psycopg[binary], matplotlib
+TASKS.md                                  # (optional) review backlog: Done, In Progress, Not Started, Open Questions, execution sequence
+requirements-host.txt                     # pinned host tools for .venv: pytest, pytest-bdd, httpx, psycopg[binary], matplotlib
 versions.md                               # every runtime, framework, package and image tag actually used
-.Codex/                                  # protected
+.vscode/                                  # editor config: interpreter, pytest discovery, extension recommendations
+  settings.json                           # default interpreter ${workspaceFolder}/.venv, pytest discovery on bdd/steps
+  extensions.json                         # recommends the Cucumber Open (Gherkin) extension
+.claude/                                  # protected
   settings.json                           # hooks, auto memory off
-  settings.local.json                     # (optional) written by Codex when you approve permissions
+  settings.local.json                     # (optional) written by Claude Code when you approve permissions
   hooks/
     protect-files.sh                      # blocks edits to protected paths
     arch-gate.sh                          # Stop hook: runs check_hexagonal.py --all
@@ -67,6 +79,8 @@ versions.md                               # every runtime, framework, package an
     contract.yml                          # runs make contract per stack
 docs/
   exp3-spec.md                            # experiment 3 spec (source of truth)
+  review/                                 # (optional) principal review: BDD_REVIEW.md, architecture .excalidraw and its PNG preview
+    **
 prompts/
   README.md
   00-observation.md
@@ -117,6 +131,8 @@ contracts/
     test_validation.py                    # contract test 7
     test_fault_hook.py                    # contract test 8
     test_mcp_tool.py                      # (optional) P6: the book_session tool through the MCP client
+bdd/                                      # (optional) Gherkin specification and thin pytest-bdd steps; runs from the host .venv
+  **                                      # features/*.feature, steps/*.py
 harness/
   __init__.py
   db.py                                   # Postgres at localhost:55432: truncate, counts
@@ -245,7 +261,7 @@ stacks/
         FaultHook.java
         ApiExceptionHandler.java          # invalid body -> 400 invalid_request
     booking-adapter-out-postgres/
-      pom.xml                             # booking-application, spring-boot-starter-jdbc, postgresql
+      pom.xml                             # booking-application, spring-boot-starter-jdbc, jackson-databind (stored result jsonb), postgresql
       src/main/java/work/rajc/booking/adapter/out/postgres/
         PostgresBookingStore.java         # TransactionTemplate; SQLSTATE 23505 -> KeyAlreadyClaimedException
         PostgresBookingTransaction.java
@@ -335,6 +351,23 @@ stacks/
   adapter and Bootstrap use `Microsoft.NET.Sdk.Web`. The root is `Rajc.Bookings` (plural), so it
   never collides with the `Booking` type.
 
+## BDD standards (checked)
+
+Feature files live in `bdd/features/`, step definitions in `bdd/steps/`, and nothing else lives under
+`bdd/`. `check_hexagonal.py bdd` (and `--all`) enforces, for every feature file:
+
+- Exactly one `Feature`; a `Background` holds context only (`Given` steps).
+- Each scenario has 3 to 7 steps and exactly one action: one `When` (an `And` or `But` after it is
+  another action). Steps run `Given`, then `When`, then `Then`, and end in an observable outcome.
+- Every `Scenario Outline` has `Examples`; use one instead of copying a scenario for each value.
+- Every scenario carries a traceability tag on itself, its `Rule` or its `Feature`: `@spec-...`
+  (spec section), `@contract-<n>` (contract test) or `@rule-<id>` (a rule below).
+
+Not checked, but expected: steps in domain language rather than HTTP or SQL; scenarios that do not
+depend on each other; step definitions that are one call into a driver over the repo's code. Tag a
+scenario or an `Examples` table `@known-defect` while the defect it describes is unfixed: `make bdd`
+runs it as a strict expected failure, so the fix shows up as a failure until the tag is removed.
+
 ## Commands (keep these working)
 
 | Command | Does |
@@ -345,6 +378,7 @@ stacks/
 | `make unit STACK=<stack>` | Runs the stack's unit tests (container stage `unit`) |
 | `make arch STACK=<stack>` | `check_hexagonal.py <stack>` (structure complete) plus the architecture tests (container stage `arch`) |
 | `make contract STACK=<stack>` | Runs contracts/tests against one stack |
+| `make bdd` | `check_hexagonal.py bdd` (BDD standards) plus the scenarios in `bdd/steps`; `@known-defect` ones are strict expected failures |
 | `make exp3 STACK= VARIANT= FAULT= RUN=` | One measured run; appends a row to results/exp3/runs.csv |
 | `make exp3-all` / `make summary` / `make chart` | Full matrix, summary.csv, figures/exp3_duplicates.svg |
 
@@ -366,12 +400,12 @@ stacks/
 
 `POST /naive/bookings` is the control group (`book_session_naive.py`, `routes_naive.py`,
 `BookSessionNaiveService`, `NaiveBookingController`, `NaiveBookingEndpoints`): no keys, deduplication,
-retries, locks or unique constraints. `.Codex/rules/naive-baseline.md` repeats this.
+retries, locks or unique constraints. `.claude/rules/naive-baseline.md` repeats this.
 
 ## Honesty rules
 
 - **H1** Never invent, estimate or hand-edit numbers. A hook blocks edits to `results/`, `observations/`,
-  `AGENTS.md`, `.Codex/` and `tools/arch/`.
+  `CLAUDE.md`, `.claude/` and `tools/arch/`.
 - **H2** Report failures plainly with the command and its output. Never claim something works unrun.
 - **H3** Never silently change the spec, tests, tooling, versions or folder structure, and never weaken
   an architecture test. Do not switch from k3d to docker compose without approval.
@@ -387,7 +421,8 @@ retries, locks or unique constraints. `.Codex/rules/naive-baseline.md` repeats t
 
 ## Definition of done for any task
 
-- `python3 tools/arch/check_hexagonal.py --all` passes (layers, naming, no files outside the tree). A
+- `python3 tools/arch/check_hexagonal.py --all` passes (layers, naming, no files outside the tree, the
+  BDD standards in `bdd/`, and `AGENTS.md` carrying this tree verbatim). A
   Stop hook runs it whenever you try to finish and blocks you once if it fails; fix the code, never the check.
   Before publishing, `--all --complete` must also pass: every listed, non-optional file exists.
 - `make arch` (which also requires every listed file of the stack to exist) and `make contract` pass for

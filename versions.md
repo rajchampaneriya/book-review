@@ -18,7 +18,9 @@ Update this file whenever a version changes.
 | git | 2.48.1 | `git --version` |
 
 Host `.venv` (requirements-host.txt): pytest 9.1.1, httpx 0.28.1,
-psycopg[binary] 3.3.6 (cp314 wheels confirmed on PyPI), matplotlib 3.11.2.
+psycopg[binary] 3.3.6 (cp314 wheels confirmed on PyPI), matplotlib 3.11.2,
+pytest-bdd 9.0.0 (PyPI JSON API on 2026-10-15; requires pytest>=7.0.0 and pulls
+gherkin-official 42.0.1) for `make bdd`.
 
 ## Python stack (stacks/python)
 

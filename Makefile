@@ -4,7 +4,7 @@ VARIANT ?= naive
 FAULT ?= 0.05
 RUN ?= 1
 
-.PHONY: doctor up down deploy unit arch contract exp3 exp3-all summary chart
+.PHONY: doctor up down deploy unit arch contract bdd exp3 exp3-all summary chart
 
 doctor:
 	bash infra/scripts/doctor.sh
@@ -27,6 +27,10 @@ arch:
 
 contract:
 	STACK=$(STACK) .venv/bin/python -m pytest -c contracts/pytest.ini contracts/tests
+
+bdd:
+	python3 tools/arch/check_hexagonal.py bdd
+	.venv/bin/python -m pytest -p no:cacheprovider -q -W ignore::pytest.PytestUnknownMarkWarning bdd/steps
 
 exp3:
 	STACK=$(STACK) VARIANT=$(VARIANT) FAULT=$(FAULT) RUN=$(RUN) .venv/bin/python -m harness.exp3_run
