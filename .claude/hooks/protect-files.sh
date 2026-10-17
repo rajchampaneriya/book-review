@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Edit|Write|MultiEdit|NotebookEdit): blocks edits to protected paths.
-# Protected: results/, observations/, CLAUDE.md, .claude/ and tools/arch/.
+# Protected: results/, observations/, .claude/ and tools/arch/. CLAUDE.md was unprotected at the author's request on 2026-10-17.
 # Everything under results/ is written only by the harness scripts; CLAUDE.md, .claude/
 # and tools/arch/ belong to the author. Exit 2 denies the edit and shows the reason.
 set -uo pipefail
@@ -20,7 +20,7 @@ EOF
 )
 
 case "$rel" in
-  results/*|results|observations/*|observations|CLAUDE.md|.claude/*|tools/arch/*|tools/arch)
+  results/*|results|observations/*|observations|.claude/*|tools/arch/*|tools/arch)
     echo "protect-files: '$rel' is protected. Results are written only by harness scripts;" >&2
     echo "protect-files: CLAUDE.md, .claude/ and tools/arch/ belong to the author. Tell the author instead." >&2
     exit 2
