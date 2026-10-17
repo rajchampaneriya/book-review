@@ -156,6 +156,7 @@ harness/
   exp3_run.py                             # make exp3 (python -m harness.exp3_run)
   exp3_matrix.py                          # make exp3-all: warm-up, matrix, resume, DRY_RUN
   exp3_summary.py                         # make summary
+  observe_load.py                         # make observe-load: light keyed and naive bookings for the overlay's dashboard
   k6/
     exp3.js                               # load script
 results/                                  # protected; written only by harness scripts
@@ -401,6 +402,7 @@ runs it as a strict expected failure, so the fix shows up as a failure until the
 | `make exp3-all` / `make summary` / `make chart` | Full matrix, summary.csv, figures/exp3_duplicates.svg |
 | `make mesh-up` | Installs the opt-in Istio ambient overlay (off for measured runs) |
 | `make observe-up` | Installs the opt-in OpenTelemetry overlay (off for measured runs) |
+| `make observe-load [STACK=] [MINUTES=5]` | Light keyed, replayed, conflicting and naive bookings on every running stack (or STACK) so the overlay's panels have data; writes nothing to results/ |
 
 ## Rules (the naive baseline is exempt from G2 only)
 
