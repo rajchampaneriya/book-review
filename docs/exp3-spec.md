@@ -198,7 +198,9 @@ named after the stack, with the local-development credentials from `infra/k8s/po
 - k3d cluster `wcf-physics` (k3s inside Docker or Podman), one server node, defined in
   `infra/k3d/cluster.yaml`. Host ports 8081-8083 map to NodePorts 30081-30083 (dotnet, java, python)
   and host port 55432 maps to NodePort 30432 (Postgres).
-- Postgres: the current major version (verify the image tag), one pod, disposable storage, credentials
+- Postgres: the current major version (verify the image tag), one pod, data on a PVC (1Gi,
+  the k3s local-path StorageClass) so pod restarts keep the schemas while deleting the cluster
+  still deletes everything, credentials
   in a Secret labelled as local-development defaults. `infra/scripts/apply-schema.sh` renders
   `db/schema.sql` once per stack schema.
 - The contract tests and the harness reach Postgres at `localhost:55432` from the host. Nothing needs a
@@ -216,6 +218,10 @@ named after the stack, with the local-development credentials from `infra/k8s/po
 - `make up` must work from a clean machine with only those prerequisites.
 - Podman: k3d needs the Podman socket and `DOCKER_HOST` set. If k3d fails on Podman on this machine,
   stop and report; do not switch to docker compose without approval.
+- The mesh and observability overlays are opt-in (`make mesh-up` and `make observe-up`) and always
+  off for measured runs. Each adds a k3d host-port mapping to `infra/k3d/cluster.yaml`: host 8090 to
+  NodePort 30090 for the Istio ingress gateway, and host 8091 to NodePort 30091 for Grafana. Adding
+  them means the cluster is recreated once.
 
 ## Architecture tests (`make arch STACK=<stack>`)
 

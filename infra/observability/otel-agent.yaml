@@ -1,0 +1,156 @@
+# One OpenTelemetry Collector per node (platform plan section 3.1).
+# Receives OTLP from the pods, kubeletstats and pod logs; enriches with
+# k8sattributes; forwards everything to lgtm. The prometheus receiver
+# for ztunnel and waypoint joins when the mesh overlay lands (step 6).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-agent
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: otel-agent
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-agent
+        wcf-physics.io/identity: otel-agent
+    spec:
+      serviceAccountName: otel-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: collector
+          image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.163.1
+          args: ["--config=/conf/otel-agent.yaml"]
+          env:
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: conf
+              mountPath: /conf
+              readOnly: true
+      volumes:
+        - name: conf
+          configMap:
+            name: otel-agent-conf
+---
+# The stacks send OTLP here (step 5): OTEL_EXPORTER_OTLP_ENDPOINT is
+# http://otel-agent.wcf-physics.svc:4317 once make observe-up switches
+# telemetry on. One node today, so any agent pod is the local one.
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-agent
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: otel-agent
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  # The controller's label, not wcf-physics.io/identity: the BDD netprobes
+  # borrow identity labels and must not receive telemetry.
+  selector:
+    app.kubernetes.io/name: otel-agent
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+      appProtocol: grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+      appProtocol: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-agent-conf
+  namespace: wcf-physics
+data:
+  otel-agent.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: https://${env:NODE_IP}:10250
+        insecure_skip_verify: true
+      # filelog joins when container logs are wanted: /var/log/pods is
+      # root-owned, so it needs a root collector or a node config change.
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 480
+      k8sattributes:
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.namespace.name
+            - k8s.node.name
+      batch: {}
+
+    exporters:
+      otlp/lgtm:
+        endpoint: lgtm:4317
+        tls:
+          insecure: true
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/lgtm]
+        metrics:
+          receivers: [otlp, kubeletstats]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/lgtm]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/lgtm]

@@ -1,0 +1,707 @@
+# Default deny, then one allow per permitted connection (platform plan
+# section 3.1, arrows on page 5). Sources outside the cluster (k6, the
+# harness, the contract tests) reach pods through the k3d node, so the
+# host allowance is the docker network subnet 172.23.0.0/16.
+#
+# Policies select pods by wcf-physics.io/identity, not app.kubernetes.io/name:
+# the DaemonSet controller deletes bare pods that carry its selector, so the
+# BDD netprobes (which impersonate a workload to test its policy) need a
+# label the controllers do not fight over.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: wcf-physics
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# python: host (and later the gateway) in; postgres, DNS and the
+# collector out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-python
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: python
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Mesh overlay: in-mesh traffic arrives from the node's ztunnel on
+    # the HBONE port (and plain from it on 8080); ztunnel probes the
+    # workload from 169.254.7.127.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 15008
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # App telemetry to the node collector (otel-agent Service, step 5).
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-agent
+      ports:
+        - protocol: TCP
+          port: 4317
+    # Mesh overlay: outbound HBONE to the node's ztunnel.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
+---
+# java: same arrows as python.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-java
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: java
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Mesh overlay: in-mesh traffic arrives from the node's ztunnel on
+    # the HBONE port (and plain from it on 8080); ztunnel probes the
+    # workload from 169.254.7.127.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 15008
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-agent
+      ports:
+        - protocol: TCP
+          port: 4317
+    # Mesh overlay: outbound HBONE to the node's ztunnel.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
+---
+# dotnet: same arrows as python.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dotnet
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: dotnet
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Mesh overlay: in-mesh traffic arrives from the node's ztunnel on
+    # the HBONE port (and plain from it on 8080); ztunnel probes the
+    # workload from 169.254.7.127.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 15008
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-agent
+      ports:
+        - protocol: TCP
+          port: 4317
+    # Mesh overlay: outbound HBONE to the node's ztunnel.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
+---
+# schema-job: DNS and postgres out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-schema-job
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: schema-job
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# duplicate-audit: DNS and postgres out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-duplicate-audit
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: duplicate-audit
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# postgres: the stack services, the Job, the audit and the host's
+# harness (NodePort 30432) in on 5432.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: python
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: java
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: dotnet
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: schema-job
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: duplicate-audit
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Mesh overlay: in-mesh traffic reaches postgres from the node's
+    # ztunnel, plain on 5432 and HBONE on 15008.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 15008
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
+---
+# otel-agent: the stacks in on OTLP (step 5: app telemetry through the
+# otel-agent Service); out to the node's kube-apiserver (k3s runs it on the
+# node, not in a pod) and kubelet, DNS, and the lgtm collector port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otel-agent
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: otel-agent
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: python
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: java
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: dotnet
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 6443
+        - protocol: TCP
+          port: 10250
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: lgtm
+      ports:
+        - protocol: TCP
+          port: 4317
+---
+# otel-cluster: the API server, DNS, and the lgtm collector port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otel-cluster
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: otel-cluster
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 6443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: lgtm
+      ports:
+        - protocol: TCP
+          port: 4317
+---
+# lgtm: the collectors in on OTLP, the host in on Grafana (NodePort 30091).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-lgtm
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: lgtm
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-agent
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-cluster
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - from:
+        - ipBlock:
+            cidr: 172.23.0.0/16
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# host-gateway-istio (the Gateway API provisioned deployment, mesh
+# overlay only): DNS, the stacks, and outbound HBONE to the ztunnel.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: gateway
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: python
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: java
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: dotnet
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# waypoint (mesh overlay only, L7 policy on the python Service): DNS,
+# python, and outbound HBONE to the ztunnel.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-waypoint
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      istio.io/dataplane-mode: waypoint
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: python
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15008
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Mesh overlay, pod to pod. With ambient's in-pod redirection, ztunnel runs
+# inside each enrolled pod's network namespace, so HBONE (TCP 15008) leaves
+# the calling pod's IP and arrives at the called pod's IP; the node's
+# ztunnel pods in istio-system are not on that path. NetworkPolicy sees only
+# 15008, so every in-namespace arrow above that carries mesh traffic gets the
+# same arrow on 15008 here, on the caller's egress and the callee's ingress.
+# Without the mesh nothing listens on 15008 and these rules are inert.
+# (Verified 2026-10-17: otel-agent and otel-cluster to lgtm were refused on
+# 15008 until the pair below existed.)
+#
+# Kubelet probes: in ambient they arrive from 169.254.7.127, not the node IP.
+# On a dual-stack cluster, also allow fd16:9254:7127:1337:ffff:ffff:ffff:ffff/128.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-health-probes
+  namespace: wcf-physics
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
+---
+# db clients -> postgres (pairs with allow-postgres and the clients' 5432 egress)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-db-clients-egress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchExpressions:
+      - key: wcf-physics.io/identity
+        operator: In
+        values: [python, java, dotnet, schema-job, duplicate-audit]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: postgres
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-postgres-ingress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: wcf-physics.io/identity
+                operator: In
+                values: [python, java, dotnet, schema-job, duplicate-audit]
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+# apps -> otel-agent (pairs with the apps' 4317 egress)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-apps-to-otel-agent-egress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchExpressions:
+      - key: wcf-physics.io/identity
+        operator: In
+        values: [python, java, dotnet]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: otel-agent
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+# apps -> otel-agent over HBONE (pairs with allow-otel-agent's 4317 and 4318 ingress)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-otel-agent-ingress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: otel-agent
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: wcf-physics.io/identity
+                operator: In
+                values: [python, java, dotnet]
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+# otel-agent / otel-cluster -> lgtm (pairs with allow-lgtm and the collectors' 4317 egress)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-collectors-to-lgtm-egress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchExpressions:
+      - key: wcf-physics.io/identity
+        operator: In
+        values: [otel-agent, otel-cluster]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              wcf-physics.io/identity: lgtm
+      ports:
+        - port: 15008
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ambient-hbone-lgtm-ingress
+  namespace: wcf-physics
+spec:
+  podSelector:
+    matchLabels:
+      wcf-physics.io/identity: lgtm
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: wcf-physics.io/identity
+                operator: In
+                values: [otel-agent, otel-cluster]
+      ports:
+        - port: 15008
+          protocol: TCP

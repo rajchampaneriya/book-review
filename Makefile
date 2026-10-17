@@ -3,14 +3,27 @@ STACK ?= python
 VARIANT ?= naive
 FAULT ?= 0.05
 RUN ?= 1
+MINUTES ?= 5
 
-.PHONY: doctor up down deploy unit arch contract bdd exp3 exp3-all summary chart
+.PHONY: doctor up down deploy unit arch contract bdd exp3 exp3-all summary chart observe-up observe-load mesh-up
 
 doctor:
 	bash infra/scripts/doctor.sh
 
 up:
 	bash infra/scripts/up.sh
+
+observe-up:
+	bash infra/scripts/observe-up.sh
+
+# Every running stack unless STACK is set on the command line or in the
+# environment; the default STACK=python above does not narrow it.
+observe-load:
+	STACK=$(if $(filter-out file,$(origin STACK)),$(STACK),) \
+	MINUTES=$(MINUTES) .venv/bin/python -m harness.observe_load
+
+mesh-up:
+	bash infra/scripts/mesh-up.sh
 
 down:
 	bash infra/scripts/down.sh

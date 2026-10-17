@@ -1,0 +1,264 @@
+{
+  "uid": "wcf-physics-overview",
+  "title": "wcf-physics overview",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-30m", "to": "now" },
+  "description": "Control tower, layered bottom-up like TOGAF BDAT: Technology (node and pod capacity), Application (rollouts and restarts), Data and Business (pending app instrumentation).",
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Technology — node capacity",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "CPU cores in use per node",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (k8s_node_name) (rate(k8s_node_cpu_time_seconds_total[$__rate_interval]))",
+          "legendFormat": "{{k8s_node_name}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Node memory working set",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "mbytes" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "k8s_node_memory_working_set_bytes",
+          "legendFormat": "{{k8s_node_name}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Node network I/O",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (k8s_node_name, direction) (rate(k8s_node_network_io_bytes_total[$__rate_interval]))",
+          "legendFormat": "{{direction}} {{k8s_node_name}}"
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Technology — pod and container hotspots",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "CPU cores per pod (top 10)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (k8s_pod_name) (rate(k8s_pod_cpu_time_seconds_total[$__rate_interval])))",
+          "legendFormat": "{{k8s_pod_name}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Memory working set per container (top 10)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "mbytes" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "topk(10, container_memory_working_set_bytes)",
+          "legendFormat": "{{k8s_pod_name}}/{{k8s_container_name}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Network I/O per pod (top 10)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (k8s_pod_name) (rate(k8s_pod_network_io_bytes_total[$__rate_interval])))",
+          "legendFormat": "{{k8s_pod_name}}"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Application — rollouts and stability",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Ready replicas per Deployment (the matrix scales stacks to 0 and 1)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "k8s_deployment_available",
+          "legendFormat": "available {{k8s_deployment_name}}"
+        },
+        {
+          "expr": "k8s_deployment_desired",
+          "legendFormat": "desired {{k8s_deployment_name}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Pod restarts (last value per pod)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (k8s_pod_name) (k8s_container_restarts)",
+          "legendFormat": "{{k8s_pod_name}}"
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "type": "row",
+      "title": "Application — requests and latency (the stacks' own telemetry; make observe-up switches it on)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Requests per second by stack and route",
+      "description": "http.server.request.duration count per stack and route; readiness probes on /health left out.",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (service_name, http_route) (rate(http_server_request_duration_seconds_count{http_route!=\"/health\"}[$__rate_interval]))",
+          "legendFormat": "{{service_name}} {{http_route}}"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "4xx and 5xx responses per second",
+      "description": "On /v2/bookings, 422 is an idempotency conflict and 409 an in-flight key; both are expected under retries.",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (service_name, http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{http_response_status_code=~\"4..|5..\", http_route!=\"/health\"}[$__rate_interval]))",
+          "legendFormat": "{{service_name}} {{http_route}} {{http_response_status_code}}"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99 per stack (POST /v2/bookings)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket{http_route=\"/v2/bookings\"}[$__rate_interval])))",
+          "legendFormat": "{{service_name}} p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket{http_route=\"/v2/bookings\"}[$__rate_interval])))",
+          "legendFormat": "{{service_name}} p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket{http_route=\"/v2/bookings\"}[$__rate_interval])))",
+          "legendFormat": "{{service_name}} p99"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "Data & Business — booking outcomes (duplicate-audit counts land with the step 4 CronJob)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Keyed booking outcomes per second (POST /v2/bookings)",
+      "description": "booking.outcomes from each stack's inbound HTTP adapter: created, replayed, conflict, in_flight.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (service_name, outcome) (rate(booking_outcomes_total[$__rate_interval]))",
+          "legendFormat": "{{service_name}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Naive bookings per second (POST /naive/bookings, the control group)",
+      "description": "Every 201 is a new booking and charge: the naive endpoint takes no idempotency key.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count{http_route=\"/naive/bookings\", http_response_status_code=\"201\"}[$__rate_interval]))",
+          "legendFormat": "{{service_name}} created"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "Keyed booking outcomes in the selected range",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 45 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name", "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "expr": "round(sum by (service_name, outcome) (increase(booking_outcomes_total[$__range])))",
+          "legendFormat": "{{service_name}} {{outcome}}",
+          "instant": true
+        }
+      ]
+    }
+  ]
+}

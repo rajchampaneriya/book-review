@@ -12,6 +12,8 @@ else
 fi
 
 kubectl apply -f infra/k8s/namespace.yaml
+kubectl apply -f infra/k8s/rbac.yaml
+kubectl apply -f infra/k8s/network-policy.yaml
 kubectl apply -f infra/k8s/postgres.yaml
 echo "up: waiting for Postgres readiness"
 kubectl wait --for=condition=available deploy/postgres -n wcf-physics --timeout=180s

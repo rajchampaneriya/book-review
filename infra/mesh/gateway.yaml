@@ -1,0 +1,68 @@
+# Host traffic into the mesh (platform plan section 3.2, D4): host 8090 ->
+# NodePort 30090 -> Gateway :80 -> python. istiod auto-provisions the
+# gateway Deployment and Service (named host-gateway-istio); the ConfigMap
+# below patches that Service to NodePort 30090. Off for measured runs:
+# applied only by make mesh-up.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: host-gateway-infra
+  namespace: wcf-physics
+data:
+  service: |
+    spec:
+      type: NodePort
+      ports:
+        - name: http-80
+          port: 80
+          targetPort: 8080
+          protocol: TCP
+          nodePort: 30090
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: host-gateway
+  namespace: wcf-physics
+spec:
+  gatewayClassName: istio
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+  infrastructure:
+    labels:
+      wcf-physics.io/identity: gateway
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: host-gateway-infra
+---
+# Naive control group and health: no retries, no timeouts (the naive
+# endpoint must stay naive; traffic.yaml owns the v2 rules).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: naive
+  namespace: wcf-physics
+spec:
+  parentRefs:
+    - name: host-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /naive/bookings
+      backendRefs:
+        - name: python
+          port: 8080
+    - matches:
+        - path:
+            type: Exact
+            value: /health
+      backendRefs:
+        - name: python
+          port: 8080

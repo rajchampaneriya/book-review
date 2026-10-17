@@ -1,0 +1,94 @@
+# Cluster-level collector (platform plan section 3.1): object state via
+# the k8s_cluster receiver — node/deployment/replicaset/job counts,
+# conditions and phases — forwarded to lgtm.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-cluster
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: otel-cluster
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-cluster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-cluster
+        wcf-physics.io/identity: otel-cluster
+    spec:
+      serviceAccountName: otel-cluster
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: collector
+          image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.163.1
+          args: ["--config=/conf/otel-cluster.yaml"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: conf
+              mountPath: /conf
+              readOnly: true
+      volumes:
+        - name: conf
+          configMap:
+            name: otel-cluster-conf
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-cluster-conf
+  namespace: wcf-physics
+data:
+  otel-cluster.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      k8s_cluster:
+        collection_interval: 30s
+        auth_type: serviceAccount
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 480
+      batch: {}
+
+    exporters:
+      otlp/lgtm:
+        endpoint: lgtm:4317
+        tls:
+          insecure: true
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        metrics:
+          receivers: [k8s_cluster]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/lgtm]

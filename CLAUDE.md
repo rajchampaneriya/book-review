@@ -114,6 +114,20 @@ infra/
     dotnet.yaml                           # Deployment (image wcf-physics/dotnet:dev) and NodePort Service 30081
     java.yaml                             # Deployment (image wcf-physics/java:dev) and NodePort Service 30082
     python.yaml                           # Deployment (image wcf-physics/python:dev) and NodePort Service 30083
+    rbac.yaml                             # ServiceAccounts, Roles, ClusterRoles and bindings
+    network-policy.yaml                   # default deny plus one allow rule per permitted connection
+    schema-job.yaml                       # Job: applies the rendered schema per stack
+    duplicate-audit.yaml                  # CronJob: read-only duplicate count per schema
+  mesh/                                   # (optional) Istio ambient overlay, off for measured runs
+    gateway.yaml                          # Gateway and HTTPRoutes for host traffic
+    security.yaml                         # PeerAuthentication and AuthorizationPolicies
+    traffic.yaml                          # timeouts, retries (v2 only), weighted routes
+  observability/                          # (optional) OpenTelemetry overlay, off for measured runs
+    otel-agent.yaml                       # DaemonSet collector
+    otel-cluster.yaml                     # Deployment collector (k8s_cluster)
+    lgtm.yaml                             # grafana/otel-lgtm backend and Grafana
+    dashboards/
+      wcf-physics-overview.json           # provisioned dashboard
   scripts/
     doctor.sh                             # make doctor
     up.sh                                 # make up: cluster, Postgres, schemas, all stacks
@@ -121,6 +135,8 @@ infra/
     deploy.sh                             # make deploy: build target runtime, k3d image import, rollout
     apply-schema.sh                       # renders db/schema.sql per stack schema and applies it
     scale.sh                              # scales one stack to 0 or 1 replicas (used by the matrix)
+    mesh-up.sh                            # make mesh-up: installs the Istio ambient overlay
+    observe-up.sh                         # make observe-up: installs the OpenTelemetry overlay
 contracts/
   pytest.ini
   tests/
@@ -140,6 +156,7 @@ harness/
   exp3_run.py                             # make exp3 (python -m harness.exp3_run)
   exp3_matrix.py                          # make exp3-all: warm-up, matrix, resume, DRY_RUN
   exp3_summary.py                         # make summary
+  observe_load.py                         # make observe-load: light keyed and naive bookings for the overlay's dashboard
   k6/
     exp3.js                               # load script
 results/                                  # protected; written only by harness scripts
@@ -192,6 +209,7 @@ stacks/
               health.py                   # GET /health
               fault_hook.py               # FaultHook
               error_handlers.py           # invalid body -> 400 invalid_request
+              metrics.py                  # outcome counter (created, replayed, conflict, in-flight)
             mcp/                          # (optional) P6 only
               __init__.py
               schemas.py                  # tool input model (Pydantic, extra="forbid")
@@ -206,6 +224,7 @@ stacks/
           __init__.py
           settings.py                     # DATABASE_URL, DB_SCHEMA, STACK, DB_POOL_SIZE, FAULT_INJECTION, FAULT_HOLD_MS
           container.py                    # builds the store, services and fault hook
+          telemetry.py                    # OTel SDK setup (off unless the observability overlay enables it)
           main.py                         # create_app() factory for uvicorn
     tests/
       unit/
@@ -381,6 +400,9 @@ runs it as a strict expected failure, so the fix shows up as a failure until the
 | `make bdd` | `check_hexagonal.py bdd` (BDD standards) plus the scenarios in `bdd/steps`; `@known-defect` ones are strict expected failures |
 | `make exp3 STACK= VARIANT= FAULT= RUN=` | One measured run; appends a row to results/exp3/runs.csv |
 | `make exp3-all` / `make summary` / `make chart` | Full matrix, summary.csv, figures/exp3_duplicates.svg |
+| `make mesh-up` | Installs the opt-in Istio ambient overlay (off for measured runs) |
+| `make observe-up` | Installs the opt-in OpenTelemetry overlay (off for measured runs) |
+| `make observe-load [STACK=] [MINUTES=5]` | Light keyed, replayed, conflicting and naive bookings on every running stack (or STACK) so the overlay's panels have data; writes nothing to results/ |
 
 ## Rules (the naive baseline is exempt from G2 only)
 

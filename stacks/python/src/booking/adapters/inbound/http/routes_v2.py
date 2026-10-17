@@ -2,7 +2,7 @@
 
 The route validates the Idempotency-Key header, calls the driving port, maps
 the outcome to a status code (Created/Replayed 201, Conflict 422, InFlight
-409) and then runs the fault hook. All policy lives in the application layer;
+409), counts the outcome (metrics.py) and then runs the fault hook. All policy lives in the application layer;
 only transport lives here.
 """
 
@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from booking.adapters.inbound.http.error_handlers import IdempotencyKeyRequired
 from booking.adapters.inbound.http.fault_hook import FaultHook
+from booking.adapters.inbound.http.metrics import OutcomeCounter
 from booking.adapters.inbound.http.schemas import BookingRequest, BookingResponse
 from booking.application.ports.inbound import (
     BookSessionCommand,
@@ -43,12 +44,17 @@ def _fault_hook(request: Request) -> FaultHook:
     return request.app.state.fault_hook
 
 
+def _outcome_counter(request: Request) -> OutcomeCounter:
+    return request.app.state.outcome_counter
+
+
 @router.post("/v2/bookings", status_code=status.HTTP_201_CREATED)
 async def create_booking(
     booking: BookingRequest,
     request: Request,
     use_case: BookSessionIdempotentUseCase = Depends(_use_case),
     fault_hook: FaultHook = Depends(_fault_hook),
+    outcomes: OutcomeCounter = Depends(_outcome_counter),
 ):
     key = _validate_key(request.headers.get(KEY_HEADER))
     command = BookSessionCommand(
@@ -59,6 +65,7 @@ async def create_booking(
         deposit_cents=booking.deposit_cents,
     )
     outcome = await use_case.book(key, command)
+    outcomes.record(outcome)
     await fault_hook.after_commit(request.headers)
 
     if isinstance(outcome, Conflict):

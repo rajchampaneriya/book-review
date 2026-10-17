@@ -70,19 +70,26 @@ else:
         and rp.get("httpGet", {}).get("port") == 8080,
     )
     check("deployment python: no liveness probe", not c.get("livenessProbe"))
-    check("deployment python: no securityContext", not spec.get("securityContext"))
     env = {e["name"]: e for e in c.get("env", [])}
-    url = env.get("DATABASE_URL", {})
+    pw = env.get("DB_PASSWORD", {})
     check(
-        "gap confirmed: DATABASE_URL repeats the password inline (no secretKeyRef)",
-        "value" in url and "wcf-local" in url.get("value", "")
-        and not c.get("envFrom"),
-        url.get("value", "(missing)"),
+        "deployment python: password from the postgres-local Secret (secretKeyRef)",
+        pw.get("valueFrom", {}).get("secretKeyRef", {}).get("key") == "POSTGRES_PASSWORD",
     )
+    manifest = (REPO / "infra" / "k8s" / "python.yaml").read_text()
+    check("no literal password in infra/k8s/python.yaml", "wcf-local" not in manifest)
     check(
-        "deployment python: no serviceAccountName",
-        not spec.get("serviceAccountName"),
+        "deployment python: serviceAccountName python, API token not mounted",
+        spec.get("serviceAccountName") == "python"
+        and spec.get("automountServiceAccountToken") is False,
         f"serviceAccountName={spec.get('serviceAccountName')!r}",
+    )
+    sc = spec.get("securityContext", {})
+    check(
+        "deployment python: non-root securityContext (uid 1000, seccomp RuntimeDefault)",
+        sc.get("runAsNonRoot") is True
+        and sc.get("runAsUser") == 1000
+        and sc.get("seccompProfile", {}).get("type") == "RuntimeDefault",
     )
 
 # Service python
@@ -115,33 +122,64 @@ else:
     pspec = items[0]["spec"]
     mounts = items[0]["spec"]["containers"][0].get("volumeMounts", [])
     check(
-        "pod runs as default service account with API token mounted",
-        pspec.get("serviceAccountName") == "default"
-        and any(
+        "pod runs as the python service account with no API token mounted",
+        pspec.get("serviceAccountName") == "python"
+        and not any(
             m.get("mountPath") == "/var/run/secrets/kubernetes.io/serviceaccount"
             for m in mounts
         ),
     )
+    sa = get_json("get", "sa", "-n", NS)
+    sa_names = sorted(
+        i["metadata"]["name"] for i in (sa or {}).get("items", [])
+    )
+    expected_sas = [
+        "default", "duplicate-audit", "otel-agent", "otel-cluster",
+        "postgres", "python", "schema-job",
+    ]
     check(
-        "no RBAC objects in wcf-physics",
-        not (get_json("get", "role,rolebinding", "-n", NS) or {}).get("items"),
+        "six workload service accounts exist",
+        sa_names == expected_sas,
+        ",".join(sa_names),
+    )
+    crb = get_json("get", "clusterrolebinding")
+    crb_names = {i["metadata"]["name"] for i in (crb or {}).get("items", [])}
+    check(
+        "otel-agent-read and otel-cluster-read ClusterRoleBindings exist",
+        {"otel-agent-read", "otel-cluster-read"} <= crb_names,
     )
 
-# Absent object types in wcf-physics
-for kind in ("networkpolicy", "job", "cronjob", "daemonset"):
+# Absent object types in wcf-physics. The observability overlay is opt-in,
+# so its otel-agent DaemonSet may or may not be present; nothing else may be.
+for kind in ("job", "cronjob"):
     r = get_json("get", kind, "-n", NS)
     items = (r or {}).get("items", [])
-    if kind == "job":
-        # ignore completed helm-install system jobs if ever listed here
-        items = items
     check(f"no {kind} in wcf-physics", not items, f"count={len(items)}")
-
-# No NetworkPolicy anywhere (k3s would enforce them out of the box)
-r = get_json("get", "networkpolicy", "-A")
+ds = get_json("get", "daemonset", "-n", NS)
+ds_names = sorted(i["metadata"]["name"] for i in (ds or {}).get("items", []))
 check(
-    "no NetworkPolicy cluster-wide",
-    not (r or {}).get("items"),
+    "only the overlay's otel-agent DaemonSet may exist in wcf-physics",
+    set(ds_names) <= {"otel-agent"},
+    ",".join(ds_names),
 )
+
+# NetworkPolicy since step 3
+np = get_json("get", "networkpolicy", "-n", NS)
+np_names = sorted(i["metadata"]["name"] for i in (np or {}).get("items", []))
+check(
+    "the five core NetworkPolicies exist in wcf-physics",
+    set([
+        "allow-duplicate-audit", "allow-postgres", "allow-python",
+        "allow-schema-job", "default-deny",
+    ]) <= set(np_names),
+    ",".join(np_names),
+)
+r = get_json("get", "networkpolicy", "-A")
+outside = [
+    i["metadata"]["name"] for i in (r or {}).get("items", [])
+    if i["metadata"]["namespace"] != NS
+]
+check("no NetworkPolicy outside wcf-physics", not outside, ",".join(outside))
 
 # Istio absent
 ns_list = get_json("get", "ns")

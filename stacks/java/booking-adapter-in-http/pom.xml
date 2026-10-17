@@ -22,5 +22,11 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+    <!-- outcome counter; version from the Spring Boot BOM. A no-op unless the
+         observability overlay attaches the OpenTelemetry Java agent. -->
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-api</artifactId>
+    </dependency>
   </dependencies>
 </project>

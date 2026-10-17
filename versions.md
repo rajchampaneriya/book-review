@@ -76,6 +76,10 @@ platform-thread pool (spec: virtual threads belong to post 2).
 
 - Postgres 18+ requires the volume mounted at `/var/lib/postgresql` (not
   `.../data`); the manifest mounts the parent directory.
+- Postgres data lives on the PVC `postgres-data` (1Gi, the k3s `local-path`
+  StorageClass), so pod restarts keep the stack schemas; deleting the cluster
+  still deletes everything. This replaces the spec's original "disposable
+  storage" (spec text reconciled 2026-10-17 after a restart wiped the schemas).
 - The measured-run fault toggle is `kubectl set env` on the stack Deployment
   (on before k6, restored after), because the deployments must default to
   `FAULT_INJECTION` unset for contract test 8.
@@ -97,3 +101,10 @@ platform-thread pool (spec: virtual threads belong to post 2).
 - VS Code: the root .venv also carries an editable install of stacks/python
   (machine-local, gitignored) so Pylance resolves `booking` and fastapi; stack
   builds and tests still run only in containers.
+
+## Observability overlay (infra/observability, opt-in, off for measured runs)
+
+| Component | Version | Verified |
+| --- | --- | --- |
+| opentelemetry-collector-contrib (otel-agent DaemonSet, otel-cluster Deployment) | 0.163.1 (arm64 confirmed in the image index; 0.163.0 is absent from ghcr) | `docker manifest inspect ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.163.1`, 2026-10-17 |
+| grafana/otel-lgtm (backend + Grafana) | 0.37.0 (amd64 and arm64) | Docker Hub tags API, 2026-10-17 |
