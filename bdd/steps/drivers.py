@@ -147,3 +147,37 @@ class Chart:
         subprocess.run([sys.executable, str(self.script), "--input", str(self.input), "--output",
                         str(self.output)], check=True, capture_output=True)
         return self.output.read_text(encoding="utf-8")
+
+
+class PlatformCluster:
+    """Reads the live k3d cluster through kubectl for the platform scenarios."""
+
+    NS = "wcf-physics"
+
+    def __init__(self) -> None:
+        self.last_permission: bool | None = None
+
+    def deployment_service_account(self, deployment: str) -> str:
+        out = subprocess.run(
+            ["kubectl", "get", "deploy", deployment, "-n", self.NS, "-o",
+             "jsonpath={.spec.template.spec.serviceAccountName}"],
+            capture_output=True, text=True, check=True,
+        )
+        return out.stdout.strip()
+
+    def check_list_pods(self) -> None:
+        # kubectl auth can-i exits 1 when the answer is no; the stdout text is the answer.
+        out = subprocess.run(
+            ["kubectl", "auth", "can-i", "list", "pods", "-n", self.NS,
+             "--as", f"system:serviceaccount:{self.NS}:python"],
+            capture_output=True, text=True, check=False,
+        )
+        self.last_permission = out.stdout.strip().lower() == "yes"
+
+    def api_token_mounted(self) -> bool:
+        out = subprocess.run(
+            ["kubectl", "get", "pods", "-n", self.NS, "-l", "app.kubernetes.io/name=python",
+             "-o", "jsonpath={range .items[*]}{.spec.containers[0].volumeMounts[*].mountPath} {end}"],
+            capture_output=True, text=True, check=True,
+        )
+        return "secrets/kubernetes.io/serviceaccount" in out.stdout

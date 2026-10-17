@@ -1,8 +1,7 @@
 # Platform plan: Kubernetes objects, Istio and OpenTelemetry
 
-Status: **decisions taken; the CLAUDE.md and AGENTS.md tree entries, the two commands and the spec
-sentence were added on 2026-10-17. Step 2 (ServiceAccounts, RBAC, Secret reference, securityContext)
-is next.** None of the objects in section 3 is built yet. The diagrams are in
+Status: **step 2 (ServiceAccounts, RBAC, Secret reference, securityContext) applied on 2026-10-17;
+step 3 (NetworkPolicy) is next.** Steps 5 and 6 (OpenTelemetry, Istio) are not built yet. The diagrams are in
 `docs/review/platform-istio-otel.drawio` (six pages, with a PNG preview of each page next to it).
 
 The plan starts with the Python stack. .NET and Java follow the same pattern afterwards, because rule G8 needs the
@@ -11,8 +10,9 @@ same behaviour in every stack.
 ## 1. What the cluster has today
 
 Validated against the live cluster on 2026-10-17 (`k3d-wcf-physics`, k3s v1.36.4+k3s1, one arm64
-server node): `python3 docs/review/istio/validate_cluster_state.py` runs 21 checks, one per claim
-below, and all pass. Run it again after any change to the cluster or these manifests.
+server node), after plan step 2 was applied: `python3 docs/review/istio/validate_cluster_state.py`
+runs 23 checks, one per claim below, and all pass. Run it again after any change to the cluster or
+these manifests.
 
 | Object | Today | Evidence |
 | --- | --- | --- |
@@ -20,8 +20,8 @@ below, and all pass. Run it again after any change to the cluster or these manif
 | Deployment | yes: 1 replica, CPU request 1 and limit 2, 1 Gi, readiness probe on `/health` | `infra/k8s/python.yaml:2-46` |
 | Service | yes: NodePort 30083 to port 8080 (host 8083) | `infra/k8s/python.yaml:48-63` |
 | Secret | yes: `postgres-local`, Opaque, 3 keys, local-development defaults | `infra/k8s/postgres.yaml` |
-| Secret use | **gap:** the python Deployment repeats the password inline (`postgresql://wcf:wcf-local@…`) instead of a `secretKeyRef` | `infra/k8s/python.yaml:27-28` |
-| ServiceAccount, RBAC | no: every pod runs as the namespace's `default` account, with its API token mounted; no Roles or bindings exist in the namespace | no `serviceAccountName` in `infra/k8s/*.yaml` |
+| Secret use | yes since step 2: the python Deployment composes `DATABASE_URL` from `secretKeyRef`s; no literal password in the manifest | `infra/k8s/python.yaml` |
+| ServiceAccount, RBAC | yes since step 2: python runs as the `python` service account with no API token mounted; six workload accounts and the `otel-agent-read` and `otel-cluster-read` ClusterRoles exist | `infra/k8s/rbac.yaml` |
 | NetworkPolicy | none anywhere in the cluster; k3s would enforce one out of the box (embedded kube-router controller) | `infra/k8s/` |
 | Job | no app Job (only k3s's own completed `helm-install-traefik` Jobs in kube-system); schemas are applied with `kubectl exec` from the host | `infra/scripts/apply-schema.sh:10` |
 | CronJob | no | `infra/k8s/` |
@@ -29,7 +29,8 @@ below, and all pass. Run it again after any change to the cluster or these manif
 | Traefik | **yes:** k3s deployed Traefik (Deployment, LoadBalancer Service, svclb DaemonSet in kube-system). `infra/k3d/cluster.yaml` sets no `--disable=traefik`, so section 3.2's assumption needs the cluster recreated | live cluster; `infra/k3d/cluster.yaml` |
 | Istio, access policy | no: no `istio-system` namespace, no Istio CRDs | `infra/` |
 | OpenTelemetry, dashboard | no: no `opentelemetry` package in the stack | `stacks/python/pyproject.toml:6-10` |
-| Liveness probe, securityContext | no | `infra/k8s/python.yaml` |
+| Liveness probe | no | `infra/k8s/python.yaml` |
+| securityContext | yes since step 2: non-root (uid/gid 1000), `runAsNonRoot`, seccomp `RuntimeDefault`, `allowPrivilegeEscalation: false`, capabilities dropped | `infra/k8s/python.yaml` |
 
 ## 2. Decisions for the author
 

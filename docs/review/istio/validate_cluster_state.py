@@ -70,19 +70,26 @@ else:
         and rp.get("httpGet", {}).get("port") == 8080,
     )
     check("deployment python: no liveness probe", not c.get("livenessProbe"))
-    check("deployment python: no securityContext", not spec.get("securityContext"))
     env = {e["name"]: e for e in c.get("env", [])}
-    url = env.get("DATABASE_URL", {})
+    pw = env.get("DB_PASSWORD", {})
     check(
-        "gap confirmed: DATABASE_URL repeats the password inline (no secretKeyRef)",
-        "value" in url and "wcf-local" in url.get("value", "")
-        and not c.get("envFrom"),
-        url.get("value", "(missing)"),
+        "deployment python: password from the postgres-local Secret (secretKeyRef)",
+        pw.get("valueFrom", {}).get("secretKeyRef", {}).get("key") == "POSTGRES_PASSWORD",
     )
+    manifest = (REPO / "infra" / "k8s" / "python.yaml").read_text()
+    check("no literal password in infra/k8s/python.yaml", "wcf-local" not in manifest)
     check(
-        "deployment python: no serviceAccountName",
-        not spec.get("serviceAccountName"),
+        "deployment python: serviceAccountName python, API token not mounted",
+        spec.get("serviceAccountName") == "python"
+        and spec.get("automountServiceAccountToken") is False,
         f"serviceAccountName={spec.get('serviceAccountName')!r}",
+    )
+    sc = spec.get("securityContext", {})
+    check(
+        "deployment python: non-root securityContext (uid 1000, seccomp RuntimeDefault)",
+        sc.get("runAsNonRoot") is True
+        and sc.get("runAsUser") == 1000
+        and sc.get("seccompProfile", {}).get("type") == "RuntimeDefault",
     )
 
 # Service python
@@ -115,16 +122,31 @@ else:
     pspec = items[0]["spec"]
     mounts = items[0]["spec"]["containers"][0].get("volumeMounts", [])
     check(
-        "pod runs as default service account with API token mounted",
-        pspec.get("serviceAccountName") == "default"
-        and any(
+        "pod runs as the python service account with no API token mounted",
+        pspec.get("serviceAccountName") == "python"
+        and not any(
             m.get("mountPath") == "/var/run/secrets/kubernetes.io/serviceaccount"
             for m in mounts
         ),
     )
+    sa = get_json("get", "sa", "-n", NS)
+    sa_names = sorted(
+        i["metadata"]["name"] for i in (sa or {}).get("items", [])
+    )
+    expected_sas = [
+        "default", "duplicate-audit", "otel-agent", "otel-cluster",
+        "postgres", "python", "schema-job",
+    ]
     check(
-        "no RBAC objects in wcf-physics",
-        not (get_json("get", "role,rolebinding", "-n", NS) or {}).get("items"),
+        "six workload service accounts exist",
+        sa_names == expected_sas,
+        ",".join(sa_names),
+    )
+    crb = get_json("get", "clusterrolebinding")
+    crb_names = {i["metadata"]["name"] for i in (crb or {}).get("items", [])}
+    check(
+        "otel-agent-read and otel-cluster-read ClusterRoleBindings exist",
+        {"otel-agent-read", "otel-cluster-read"} <= crb_names,
     )
 
 # Absent object types in wcf-physics

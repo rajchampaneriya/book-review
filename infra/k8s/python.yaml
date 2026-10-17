@@ -17,6 +17,14 @@ spec:
       labels:
         app.kubernetes.io/name: python
     spec:
+      serviceAccountName: python
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: python
           image: wcf-physics/python:dev
@@ -24,14 +32,35 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            # Secret reference, not the inline password (platform plan 3.1);
+            # DATABASE_URL is composed from the dependent variables below.
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-local
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-local
+                  key: POSTGRES_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-local
+                  key: POSTGRES_DB
             - name: DATABASE_URL
-              value: postgresql://wcf:wcf-local@postgres:5432/bookings
+              value: postgresql://$(DB_USER):$(DB_PASSWORD)@postgres:5432/$(DB_NAME)
             - name: DB_SCHEMA
               value: python
             - name: STACK
               value: python
             - name: DB_POOL_SIZE
               value: "10"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           readinessProbe:
             httpGet:
               path: /health

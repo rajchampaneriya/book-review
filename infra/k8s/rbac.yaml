@@ -1,0 +1,97 @@
+# One identity per workload (platform plan section 3.1). Istio later uses
+# these accounts as the pods' mTLS identities. Workloads that never call
+# the Kubernetes API mount no token; only the collectors do.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: python
+  namespace: wcf-physics
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres
+  namespace: wcf-physics
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: schema-job
+  namespace: wcf-physics
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: duplicate-audit
+  namespace: wcf-physics
+automountServiceAccountToken: false
+---
+# The collectors watch the API (kubeletstats, k8sattributes, k8s_cluster),
+# so they keep the mounted token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-agent
+  namespace: wcf-physics
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-cluster
+  namespace: wcf-physics
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-agent-read
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes", "nodes/stats"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-agent-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-agent-read
+subjects:
+  - kind: ServiceAccount
+    name: otel-agent
+    namespace: wcf-physics
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-cluster-read
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-cluster-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-cluster-read
+subjects:
+  - kind: ServiceAccount
+    name: otel-cluster
+    namespace: wcf-physics
