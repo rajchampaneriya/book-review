@@ -1,6 +1,7 @@
-# Postgres, one pod, disposable storage, exposed as NodePort 30432
-# (host 55432). The Secret holds LOCAL-DEVELOPMENT DEFAULTS only; there
-# is no real credential anywhere in this repo (rule G7).
+# Postgres, one pod, exposed as NodePort 30432 (host 55432). Data lives on a
+# PVC (k3d local-path), so pod restarts keep the schemas; deleting the cluster
+# still deletes everything. The Secret holds LOCAL-DEVELOPMENT DEFAULTS only;
+# there is no real credential anywhere in this repo (rule G7).
 apiVersion: v1
 kind: Secret
 metadata:
@@ -54,7 +55,24 @@ spec:
               mountPath: /var/lib/postgresql
       volumes:
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
