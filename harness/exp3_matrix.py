@@ -9,6 +9,7 @@ estimated duration without running anything.
 from __future__ import annotations
 
 import csv
+import json
 import os
 import subprocess
 import sys
@@ -50,6 +51,15 @@ def kubectl(*args: str) -> None:
 
 def scale(stack: str, replicas: int) -> None:
     kubectl("scale", f"deploy/{stack}", "--replicas", str(replicas))
+
+
+def set_duplicate_audit_suspended(suspended: bool) -> None:
+    """Advisory: a failed patch or a missing CronJob must not stop a measured run."""
+    subprocess.run(
+        ["kubectl", "-n", "wcf-physics", "patch", "cronjob", "duplicate-audit",
+         "-p", json.dumps({"spec": {"suspend": suspended}})],
+        check=False, capture_output=True, cwd=REPO,
+    )
 
 
 def warm_up(stack: str) -> None:
@@ -111,6 +121,7 @@ def main() -> int:
         return 0
 
     hostinfo.write()
+    set_duplicate_audit_suspended(True)
     try:
         for stack in STACKS:
             if stack not in warmups:
@@ -124,6 +135,7 @@ def main() -> int:
                     continue
                 measured_run(stack, variant, fault, run)
     finally:
+        set_duplicate_audit_suspended(False)
         for stack in STACKS:
             scale(stack, 1)
         print("matrix: all stacks restored to 1 replica")
