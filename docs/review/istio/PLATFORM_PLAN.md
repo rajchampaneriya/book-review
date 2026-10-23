@@ -1,8 +1,9 @@
 # Platform plan: Kubernetes objects, Istio and OpenTelemetry
 
-Status: **steps 2 (identities, Secret reference, securityContext), 3 (NetworkPolicy) and the
-infrastructure half of step 5 (collectors, lgtm, provisioned dashboard — `make observe-up`) applied
-on 2026-10-17; step 4 (schema-apply Job and duplicate-audit CronJob) is next.** Step 5's app half is
+Status: **steps 2 (identities, Secret reference, securityContext), 3 (NetworkPolicy), 4
+(schema-apply Job, duplicate-audit CronJob and the `duplicate_bookings{stack}` metric from the
+cluster collector) and the infrastructure half of step 5 (collectors, lgtm, provisioned dashboard —
+`make observe-up`) applied; step 4 on 2026-10-23, the rest on 2026-10-17.** Step 5's app half is
 coded for all three stacks (the author brought .NET and Java forward from step 7 on 2026-10-17) and
 waits for `make unit`, `make arch`, `make contract` and `make bdd` on the cluster; step 6 (Istio) is
 in progress on `istio-addition`. The diagrams are

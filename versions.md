@@ -106,5 +106,5 @@ platform-thread pool (spec: virtual threads belong to post 2).
 
 | Component | Version | Verified |
 | --- | --- | --- |
-| opentelemetry-collector-contrib (otel-agent DaemonSet, otel-cluster Deployment) | 0.163.1 (arm64 confirmed in the image index; 0.163.0 is absent from ghcr) | `docker manifest inspect ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.163.1`, 2026-10-17 |
+| opentelemetry-collector-contrib (otel-agent DaemonSet, otel-cluster Deployment) | 0.163.1 (arm64 confirmed in the image index; 0.163.0 is absent from ghcr); sql_query receiver (metrics stability Alpha) feeds `duplicate_bookings{stack}` | `docker manifest inspect ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.163.1`, 2026-10-17; `kubectl exec deploy/otel-cluster -- components`, 2026-10-23 |
 | grafana/otel-lgtm (backend + Grafana) | 0.37.0 (amd64 and arm64) | Docker Hub tags API, 2026-10-17 |

@@ -149,12 +149,26 @@ else:
         {"otel-agent-read", "otel-cluster-read"} <= crb_names,
     )
 
-# Absent object types in wcf-physics. The observability overlay is opt-in,
-# so its otel-agent DaemonSet may or may not be present; nothing else may be.
-for kind in ("job", "cronjob"):
-    r = get_json("get", kind, "-n", NS)
-    items = (r or {}).get("items", [])
-    check(f"no {kind} in wcf-physics", not items, f"count={len(items)}")
+# Jobs and CronJobs in wcf-physics: only the platform plan's schema-apply Job
+# and duplicate-audit CronJob (step 4) may exist, in any completion state.
+cronjobs = get_json("get", "cronjob", "-n", NS)
+cronjob_names = sorted(i["metadata"]["name"] for i in (cronjobs or {}).get("items", []))
+check(
+    "only the duplicate-audit CronJob exists in wcf-physics",
+    cronjob_names == ["duplicate-audit"],
+    ",".join(cronjob_names),
+)
+jobs = get_json("get", "job", "-n", NS)
+job_names = sorted(
+    i["metadata"]["name"] for i in (jobs or {}).get("items", [])
+    if i["metadata"]["name"] != "schema-apply"
+    and not i["metadata"]["name"].startswith("duplicate-audit-")
+)
+check(
+    "only schema-apply and duplicate-audit Jobs exist in wcf-physics",
+    not job_names,
+    ",".join(job_names),
+)
 ds = get_json("get", "daemonset", "-n", NS)
 ds_names = sorted(i["metadata"]["name"] for i in (ds or {}).get("items", []))
 check(
