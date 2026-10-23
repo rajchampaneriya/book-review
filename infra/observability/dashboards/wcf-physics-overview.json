@@ -209,7 +209,7 @@
     {
       "id": 103,
       "type": "row",
-      "title": "Data & Business — booking outcomes (duplicate-audit counts land with the step 4 CronJob)",
+      "title": "Data & Business — booking outcomes (duplicate-audit counts)",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
       "collapsed": false,
       "panels": []
@@ -256,6 +256,22 @@
         {
           "expr": "round(sum by (service_name, outcome) (increase(booking_outcomes_total[$__range])))",
           "legendFormat": "{{service_name}} {{outcome}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Duplicate bookings per stack (duplicate-audit)",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 51 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name", "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "expr": "max by (stack) (duplicate_bookings)",
+          "legendFormat": "{{stack}}",
           "instant": true
         }
       ]

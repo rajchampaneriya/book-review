@@ -31,6 +31,24 @@ spec:
         - name: collector
           image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.163.1
           args: ["--config=/conf/otel-cluster.yaml"]
+          env:
+            # sql_query receiver: the same local-development Secret the
+            # booking stacks and the audit use.
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-local
+                  key: POSTGRES_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-local
+                  key: POSTGRES_PASSWORD
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-local
+                  key: POSTGRES_DB
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -72,6 +90,26 @@ data:
       k8s_cluster:
         collection_interval: 30s
         auth_type: serviceAccount
+      sql_query:
+        # duplicate-audit counts (platform plan section 3.1): the same query
+        # the duplicate-audit CronJob reports to its logs, as a metric.
+        driver: postgres
+        datasource: "host=postgres.wcf-physics.svc port=5432 user=${env:PGUSER} password=${env:PGPASSWORD} dbname=${env:PGDATABASE} sslmode=disable"
+        collection_interval: 5m
+        queries:
+          - sql: >-
+              select stack, duplicate_bookings from (
+                select 'dotnet' as stack, count(*) - count(distinct client_ref) as duplicate_bookings from dotnet.bookings
+                union all
+                select 'java', count(*) - count(distinct client_ref) from java.bookings
+                union all
+                select 'python', count(*) - count(distinct client_ref) from python.bookings
+              ) audit
+            metrics:
+              - metric_name: duplicate_bookings
+                value_column: duplicate_bookings
+                attribute_columns: [stack]
+                description: "bookings_total - count(distinct client_ref) per stack schema, from the duplicate audit"
 
     processors:
       memory_limiter:
@@ -89,6 +127,6 @@ data:
       extensions: [health_check]
       pipelines:
         metrics:
-          receivers: [k8s_cluster]
+          receivers: [k8s_cluster, sql_query]
           processors: [memory_limiter, batch]
           exporters: [otlp/lgtm]

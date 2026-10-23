@@ -41,9 +41,51 @@ spec:
   mtls:
     mode: PERMISSIVE
 ---
+# Same exception for java and dotnet: the contract tests and the matrix
+# drive every stack through its NodePort in plain HTTP (rule G8: all three
+# stacks answer the same traffic). PeerAuthentication selectors take
+# matchLabels only, so each workload gets its own object.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: java-host-exception
+  namespace: wcf-physics
+spec:
+  selector:
+    matchLabels:
+      wcf-physics.io/identity: java
+  mtls:
+    mode: PERMISSIVE
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: dotnet-host-exception
+  namespace: wcf-physics
+spec:
+  selector:
+    matchLabels:
+      wcf-physics.io/identity: dotnet
+  mtls:
+    mode: PERMISSIVE
+---
+# And for lgtm: Grafana itself is served on NodePort 30091 (host 8091).
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: lgtm-host-exception
+  namespace: wcf-physics
+spec:
+  selector:
+    matchLabels:
+      wcf-physics.io/identity: lgtm
+  mtls:
+    mode: PERMISSIVE
+---
 # postgres (L4, ztunnel): port 5432 only from the workload identities,
-# or from the docker subnet the host harness arrives on (it mirrors the
-# allow-postgres NetworkPolicy arrow).
+# or from the host harness. Host traffic reaches a NodePort through the
+# node, and ztunnel sees it masqueraded as the node's address inside the
+# pod CIDR (10.42.0.1 on this cluster), so both ranges are listed.
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -63,19 +105,23 @@ spec:
               - cluster.local/ns/wcf-physics/sa/dotnet
               - cluster.local/ns/wcf-physics/sa/schema-job
               - cluster.local/ns/wcf-physics/sa/duplicate-audit
+              - cluster.local/ns/wcf-physics/sa/otel-cluster
       to:
         - operation:
             ports: ["5432"]
     - from:
         - source:
-            ipBlocks: ["172.23.0.0/16"]
+            ipBlocks: ["172.23.0.0/16", "10.42.0.0/16"]
       to:
         - operation:
             ports: ["5432"]
 ---
 # python (L7, waypoint): only the auto-provisioned gateway's identity
 # (cluster.local/ns/wcf-physics/sa/host-gateway-istio) or the host subnet,
-# and only the three paths the HTTP contract defines.
+# and only the three paths the HTTP contract defines. Host NodePort traffic
+# never reaches the waypoint, so ztunnel evaluates it at L4 alone and a rule
+# bearing methods/paths can never match it; the separate ports-only rule
+# below covers that path.
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -97,8 +143,14 @@ spec:
             paths: ["/naive/bookings", "/v2/bookings", "/health"]
     - from:
         - source:
-            ipBlocks: ["172.23.0.0/16"]
+            ipBlocks: ["172.23.0.0/16", "10.42.0.0/16"]
       to:
         - operation:
             methods: ["POST", "GET"]
             paths: ["/naive/bookings", "/v2/bookings", "/health"]
+    - from:
+        - source:
+            ipBlocks: ["172.23.0.0/16", "10.42.0.0/16"]
+      to:
+        - operation:
+            ports: ["8080"]
