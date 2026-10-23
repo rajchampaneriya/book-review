@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pytest_bdd import given, parsers, scenario, then, when
 
-from drivers import LoadPlan, ObserveLoad, PlatformCluster, StackTelemetry
+from drivers import LoadPlan, ObserveLoad, PlatformCluster, SchemaAudit, StackTelemetry
 
 FEATURES = Path(__file__).resolve().parents[1] / "features"
 
@@ -171,6 +171,65 @@ def exports_no_telemetry(cluster, stack):
 
 # ---------------------------------------------- platform_observe_load ---
 OBSERVE_LOAD = str(FEATURES / "platform_observe_load.feature")
+
+
+# ------------------------------------------- platform_schema_and_audit ---
+SCHEMA_AUDIT = str(FEATURES / "platform_schema_and_audit.feature")
+
+
+@scenario(SCHEMA_AUDIT, "Schemas are applied by an in-cluster Job")
+def test_schemas_applied_by_job():
+    pass
+
+
+@scenario(SCHEMA_AUDIT, "The duplicate audit never writes")
+def test_duplicate_audit_never_writes():
+    pass
+
+
+@given("the cluster from make up with Postgres serving", target_fixture="audit")
+def postgres_serving():
+    audit = SchemaAudit()
+    assert audit.postgres_serving(), "postgres is not serving: run make up first"
+    return audit
+
+
+@given("the python schema holds bookings with repeated client references", target_fixture="audit")
+def python_duplicates_seeded(request):
+    audit = SchemaAudit()
+    assert audit.postgres_serving(), "postgres is not serving: run make up first"
+    audit.seed_python_duplicates(request.addfinalizer)
+    return audit
+
+
+@when("the rendered schema SQL is applied through the schema-apply Job")
+def apply_schemas(audit):
+    audit.apply_schemas()
+
+
+@when("the duplicate-audit CronJob runs")
+def run_duplicate_audit(audit):
+    audit.trigger_audit()
+
+
+@then("the Job completes")
+def job_completes(audit):
+    assert audit.job_succeeded
+
+
+@then("the dotnet, java and python schemas each hold the three tables")
+def three_tables_each(audit):
+    assert audit.tables_per_schema() == {"dotnet": 3, "java": 3, "python": 3}
+
+
+@then("it reports the duplicate count")
+def reports_duplicate_count(audit):
+    assert audit.reported_duplicates("python") == 1, audit.audit_log
+
+
+@then("the row counts in every table are unchanged")
+def rows_unchanged(audit):
+    assert audit.row_counts() == audit.rows_before
 
 
 @scenario(OBSERVE_LOAD, "The load sends a fixed mix of new, replayed, conflicting and naive bookings")

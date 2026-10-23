@@ -76,6 +76,13 @@ Feature: Measured runs produce trustworthy evidence
     Then 54 runs and 3 warm-ups are listed with an estimated duration
     And no cluster or load command is executed
 
+  @matrix @happy
+  Scenario: The matrix suspends the duplicate audit while it measures
+    Given the duplicate-audit CronJob exists on its schedule
+    When the matrix runs
+    Then the audit is suspended before the first measured run
+    And the audit is resumed after the last one
+
   @open-question @run
   Scenario: Switching fault injection on keeps the warmed-up process
     Given the stack under test has been warmed up

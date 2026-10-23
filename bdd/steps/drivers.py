@@ -10,6 +10,7 @@ import asyncio
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -85,6 +86,7 @@ class MatrixHarness:
         self.matrix = matrix
         self.replicas = {s: 1 for s in STACKS}
         self.at_first_run: dict[str, dict[str, int]] = {}
+        self.events: list[tuple] = []
 
     def run(self) -> None:
         m = self.matrix
@@ -93,9 +95,12 @@ class MatrixHarness:
         m.hostinfo.write = lambda: None
         m.scale = lambda stack, n: self.replicas.__setitem__(stack, n)
         m.warm_up = lambda stack: None
+        m.set_duplicate_audit_suspended = (
+            lambda suspended: self.events.append(("audit", suspended)))
 
         def measured(stack, variant, fault, run):
             self.at_first_run.setdefault(stack, dict(self.replicas))
+            self.events.append(("measured", stack))
 
         m.measured_run = measured
         m.main()
@@ -233,6 +238,92 @@ class PlatformCluster:
             capture_output=True, text=True, check=True,
         )
         return "secrets/kubernetes.io/serviceaccount" in out.stdout
+
+
+class SchemaAudit(PlatformCluster):
+    """Drives the schema-apply Job and the duplicate-audit CronJob (platform
+    plan section 3.1) on the live cluster, reading the database back through
+    harness.db the way the measured runs do."""
+
+    REPO = Path(__file__).resolve().parents[2]
+    TABLES = ("bookings", "charges", "idempotency_keys")
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.job_succeeded = False
+        self.audit_log = ""
+        self.rows_before: dict[tuple[str, str], int] = {}
+
+    def postgres_serving(self) -> bool:
+        out = subprocess.run(
+            ["kubectl", "get", "deploy", "postgres", "-n", self.NS, "-o",
+             "jsonpath={.status.availableReplicas}"],
+            capture_output=True, text=True, check=False)
+        return out.returncode == 0 and out.stdout.strip() not in ("", "0")
+
+    def apply_schemas(self) -> None:
+        subprocess.run(["bash", "infra/scripts/apply-schema.sh"], cwd=self.REPO,
+                       check=True, capture_output=True)
+        out = subprocess.run(
+            ["kubectl", "get", "job", "schema-apply", "-n", self.NS, "-o",
+             "jsonpath={.status.succeeded}"],
+            capture_output=True, text=True, check=True)
+        self.job_succeeded = out.stdout.strip() == "1"
+
+    def tables_per_schema(self) -> dict[str, int]:
+        from harness import db
+        with db.connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT table_schema, count(*) FROM information_schema.tables "
+                        "WHERE table_schema IN ('dotnet','java','python') GROUP BY table_schema")
+            counts = dict(cur.fetchall())
+        conn.close()
+        return counts
+
+    def row_counts(self) -> dict[tuple[str, str], int]:
+        from harness import db
+        counts: dict[tuple[str, str], int] = {}
+        with db.connect() as conn, conn.cursor() as cur:
+            for schema in STACKS:
+                for table in self.TABLES:
+                    cur.execute(f"SELECT count(*) FROM {schema}.{table}")
+                    counts[(schema, table)] = cur.fetchone()[0]
+        conn.close()
+        return counts
+
+    def seed_python_duplicates(self, at_teardown) -> None:
+        """Two bookings and two charges sharing one client_ref: exactly one
+        duplicate for the audit to report. Truncated again at teardown."""
+        from harness import db
+        at_teardown(lambda: db.truncate("python"))
+        db.truncate("python")
+        ref = "audit-bdd"
+        with db.connect() as conn, conn.cursor() as cur:
+            for _ in range(2):
+                cur.execute(
+                    "INSERT INTO python.bookings (id, client_ref, session_id, dog_id, owner_id, "
+                    "deposit_cents) VALUES (gen_random_uuid(), %s, 's-42', 'd-7', 'o-9', 2500) "
+                    "RETURNING id", (ref,))
+                cur.execute(
+                    "INSERT INTO python.charges (id, booking_id, client_ref, amount_cents) "
+                    "VALUES (gen_random_uuid(), %s, %s, 2500)", (cur.fetchone()[0], ref))
+        conn.close()
+        self.rows_before = self.row_counts()
+
+    def trigger_audit(self) -> None:
+        subprocess.run(["kubectl", "delete", "job", "duplicate-audit-bdd", "-n", self.NS],
+                       capture_output=True, check=False)
+        subprocess.run(["kubectl", "create", "job", "duplicate-audit-bdd", "-n", self.NS,
+                        "--from=cronjob/duplicate-audit"], check=True, capture_output=True)
+        subprocess.run(["kubectl", "wait", "--for=condition=complete",
+                        "job/duplicate-audit-bdd", "-n", self.NS, "--timeout=120s"],
+                       check=True, capture_output=True)
+        out = subprocess.run(["kubectl", "logs", "job/duplicate-audit-bdd", "-n", self.NS],
+                             capture_output=True, text=True, check=True)
+        self.audit_log = out.stdout
+
+    def reported_duplicates(self, stack: str) -> int | None:
+        match = re.search(rf"{stack}\s*\|\s*(\d+)", self.audit_log)
+        return int(match.group(1)) if match else None
 
 
 class StackTelemetry(PlatformCluster):

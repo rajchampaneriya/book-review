@@ -141,6 +141,34 @@ def others_idle(started):
     assert all(state[s] == 0 for s in STACKS if s != stack)
 
 
+@scenario(str(FEATURES / "exp3_measurement_run.feature"),
+          "The matrix suspends the duplicate audit while it measures")
+def test_matrix_suspends_duplicate_audit():
+    pass
+
+
+@given("the duplicate-audit CronJob exists on its schedule")
+def duplicate_audit_on_schedule():
+    manifest = (REPO / "infra" / "k8s" / "duplicate-audit.yaml").read_text(encoding="utf-8")
+    assert 'schedule: "*/5 * * * *"' in manifest
+
+
+@when("the matrix runs")
+def the_matrix_runs(matrix):
+    matrix.run()
+
+
+@then("the audit is suspended before the first measured run")
+def audit_suspended_before_measuring(matrix):
+    first_measured = next(i for i, e in enumerate(matrix.events) if e[0] == "measured")
+    assert matrix.events.index(("audit", True)) < first_measured, matrix.events
+
+
+@then("the audit is resumed after the last one")
+def audit_resumed_after_measuring(matrix):
+    assert matrix.events[-1] == ("audit", False), matrix.events
+
+
 # ------------------------------------------------ exp3_results_summary_and_chart
 @scenario(str(FEATURES / "exp3_results_summary_and_chart.feature"),
           "Runs from other commits and shortened smoke runs are left out")
