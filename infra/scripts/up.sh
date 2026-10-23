@@ -20,6 +20,9 @@ kubectl wait --for=condition=available deploy/postgres -n wcf-physics --timeout=
 
 bash infra/scripts/apply-schema.sh
 
+# after the schemas exist, so the first scheduled audit finds the tables
+kubectl apply -f infra/k8s/duplicate-audit.yaml
+
 kubectl apply -f infra/k8s/dotnet.yaml -f infra/k8s/java.yaml -f infra/k8s/python.yaml
 echo "up: applied all stack manifests (dotnet and java images arrive in P2; scale them to 0 until then)"
 kubectl -n wcf-physics scale deploy/dotnet deploy/java --replicas=0

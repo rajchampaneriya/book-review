@@ -1,0 +1,101 @@
+# Duplicate-audit CronJob (platform plan section 3.1, decision D3): every few
+# minutes it counts duplicate bookings per stack schema —
+# count(*) - count(distinct client_ref), the experiment's measurement — and
+# reports the counts to the job logs. Read-only by SQL only: it connects as
+# the wcf user (the schema owner, the only role with SELECT on the stack
+# schemas), so the audit holds only SELECTs and never writes; the matrix
+# suspends it during measured runs (harness/exp3_matrix.py). The
+# duplicate_bookings{stack} metric for the dashboard comes from the same
+# query in the otel-cluster collector's sql_query receiver.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: duplicate-audit-sql
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: duplicate-audit
+    app.kubernetes.io/part-of: wcf-physics
+data:
+  audit.sql: |
+    select 'dotnet' as stack, count(*) - count(distinct client_ref) as duplicate_bookings from dotnet.bookings
+    union all
+    select 'java', count(*) - count(distinct client_ref) from java.bookings
+    union all
+    select 'python', count(*) - count(distinct client_ref) from python.bookings;
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: duplicate-audit
+  namespace: wcf-physics
+  labels:
+    app.kubernetes.io/name: duplicate-audit
+    app.kubernetes.io/part-of: wcf-physics
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: duplicate-audit
+            wcf-physics.io/identity: duplicate-audit
+        spec:
+          serviceAccountName: duplicate-audit
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: audit
+              image: postgres:18.6
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - psql -v ON_ERROR_STOP=1 -f /sql/audit.sql
+              env:
+                - name: PGHOST
+                  value: postgres
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-local
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-local
+                      key: POSTGRES_PASSWORD
+                - name: PGDATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-local
+                      key: POSTGRES_DB
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 50m
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              volumeMounts:
+                - name: sql
+                  mountPath: /sql
+                  readOnly: true
+          volumes:
+            - name: sql
+              configMap:
+                name: duplicate-audit-sql
