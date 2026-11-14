@@ -11,7 +11,7 @@ dependencies = [
     # on (bootstrap/telemetry.py). FastAPI instruments itself through the API it
     # already depends on, so no FastAPI instrumentation package is needed.
     # Versions checked on PyPI 2026-10-17.
-    "opentelemetry-api==1.45.1",
+    "opentelemetry-api==1.45.2",
     "opentelemetry-sdk==1.45.1",
     "opentelemetry-exporter-otlp-proto-grpc==1.45.1",
     "opentelemetry-instrumentation-asyncpg==0.66b1",
